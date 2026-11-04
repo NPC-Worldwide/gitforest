@@ -1317,7 +1317,7 @@ dependencies = [
 
 [[package]]
 name = "gt-collab"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1333,7 +1333,7 @@ dependencies = [
 
 [[package]]
 name = "gt-compute"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1369,7 +1369,7 @@ dependencies = [
 
 [[package]]
 name = "gt-core"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1388,7 +1388,7 @@ dependencies = [
 
 [[package]]
 name = "gt-daemon"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "axum 0.8.9",
@@ -1425,7 +1425,7 @@ dependencies = [
 
 [[package]]
 name = "gt-dht"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "gt-core",
@@ -1442,7 +1442,7 @@ dependencies = [
 
 [[package]]
 name = "gt-lfs"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1459,7 +1459,7 @@ dependencies = [
 
 [[package]]
 name = "gt-mcp"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "reqwest",
@@ -1470,7 +1470,7 @@ dependencies = [
 
 [[package]]
 name = "gt-remote"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1485,7 +1485,7 @@ dependencies = [
 
 [[package]]
 name = "gt-transport"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "git2",
@@ -1502,7 +1502,7 @@ dependencies = [
 
 [[package]]
 name = "gt-web"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "axum 0.8.9",
  "mime_guess",
