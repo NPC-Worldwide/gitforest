@@ -83,7 +83,7 @@ for i in $(seq 1 60); do
     /usr/bin/sleep 2
 done
 
-# Clone from GitForest
+# Clone from gitforest
 mkdir -p /root/clones
 cd /root/clones
 echo "Cloning gitforest://$SEEDER_PEER_ID/npcsh ..."
@@ -100,5 +100,5 @@ if [ "$COMMIT_COUNT" -lt 1 ]; then
     exit 1
 fi
 
-echo "SUCCESS: clone worked over GitForest network"
+echo "SUCCESS: clone worked over gitforest network"
 kill $DAEMON_PID || true

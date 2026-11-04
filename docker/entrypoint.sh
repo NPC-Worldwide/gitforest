@@ -63,7 +63,7 @@ if [ -n "$REPO_SOURCE" ] && [ ! -d "$REPO_DIR/$REPO_NAME/.git" ]; then
     git clone "$REPO_SOURCE" "$REPO_DIR/$REPO_NAME"
 fi
 
-# If the repo exists, add it to GitForest
+# If the repo exists, add it to gitforest
 if [ -d "$REPO_DIR/$REPO_NAME/.git" ]; then
     if ! grep -q "name = \"$REPO_NAME\"" "$CONFIG_DIR/config.toml"; then
         gitforest --config "$CONFIG_DIR/config.toml" add "$REPO_DIR/$REPO_NAME" --name "$REPO_NAME" --description "Test repo"
@@ -76,7 +76,7 @@ process_repo_list() {
     local list="${GF_REPO_LIST:-}"
     [ -z "$list" ] && return
 
-    echo "$list" | while IFS='=' read -r repo_name repo_url; do
+    echo "$list" | tr ';' '\n' | while IFS='=' read -r repo_name repo_url; do
         [ -z "$repo_name" ] && continue
         [ -z "$repo_url" ] && continue
         repo_name=$(echo "$repo_name" | xargs)
@@ -89,7 +89,7 @@ process_repo_list() {
             (cd "$REPO_DIR/$repo_name" && git fetch --all) || echo "WARN: failed to fetch $repo_name"
         fi
         if [ -d "$REPO_DIR/$repo_name/.git" ] && ! grep -q "name = \"$repo_name\"" "$CONFIG_DIR/config.toml"; then
-            echo "Registering $repo_name with GitForest ..."
+            echo "Registering $repo_name with gitforest ..."
             gitforest --config "$CONFIG_DIR/config.toml" add "$REPO_DIR/$repo_name" --name "$repo_name" --description "Hosted seed repo" || echo "WARN: failed to register $repo_name"
         fi
     done
@@ -98,7 +98,7 @@ process_repo_list() {
 process_repo_list
 
 if [ "$MODE" = "daemon" ]; then
-    echo "Starting GitForest daemon (role=$ROLE, p2p=$P2P_PORT, api=$API_PORT)"
+    echo "Starting gitforest daemon (role=$ROLE, p2p=$P2P_PORT, api=$API_PORT)"
     unset GITFOREST_SKIP_AUTH
     exec gitforest --config "$CONFIG_DIR/config.toml" daemon
 else

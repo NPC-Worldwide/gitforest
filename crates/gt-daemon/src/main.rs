@@ -810,15 +810,22 @@ async fn main() -> Result<()> {
                 api::start_api(config.clone(), config_path, identity, identity_path, dht).await
             });
 
+            #[cfg(unix)]
+            let sigterm = async {
+                let mut sigterm =
+                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                        .expect("SIGTERM handler");
+                sigterm.recv().await;
+                info!("Received SIGTERM, shutting down...");
+            };
+            #[cfg(not(unix))]
+            let sigterm = std::future::pending::<()>();
+
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {
                     info!("Received SIGINT, shutting down...");
                 }
-                _ = async {
-                    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("SIGTERM handler");
-                    sigterm.recv().await;
-                    info!("Received SIGTERM, shutting down...");
-                } => {}
+                _ = sigterm => {}
                 result = api_handle => {
                     if let Err(e) = result {
                         tracing::error!("API task panicked: {e}");

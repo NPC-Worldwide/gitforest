@@ -88,6 +88,25 @@ jobs:
             gitforest-macos-arm64.tar.gz
             gitforest-macos-arm64.tar.gz.sha256
 
+  build-windows:
+    needs: [gates]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --release
+      - shell: bash
+        run: sh scripts/dist.sh "${GITHUB_REF_NAME#v}" windows-x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gitforest-windows-x64
+          path: |
+            gitforest-windows-x64.zip
+            gitforest-windows-x64.zip.sha256
+
   build-deb:
     needs: [gates]
     runs-on: ubuntu-latest
@@ -109,9 +128,9 @@ jobs:
           Section: vcs
           Priority: optional
           Architecture: amd64
-          Maintainer: GitForest Team <team@gitforest.dev>
+          Maintainer: gitforest team <team@gitforest.dev>
           Description: P2P git hosting over libp2p
-           GitForest lets you host and clone git repositories peer-to-peer
+           gitforest lets you host and clone git repositories peer-to-peer
            without a central server, using Kademlia DHT and mDNS discovery.
           EOF
           dpkg-deb --build debian gitforest_${VERSION}_amd64.deb
@@ -172,7 +191,7 @@ jobs:
           path: desktop/release/*.dmg
 
   publish-gcs:
-    needs: [preflight, build-linux, build-macos, build-deb, build-desktop-linux, build-desktop-macos]
+    needs: [preflight, build-linux, build-macos, build-windows, build-deb, build-desktop-linux, build-desktop-macos]
     if: needs.preflight.outputs.cloud == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -203,6 +222,10 @@ jobs:
             gs://gitforest-executables/macos-arm64/
           gsutil cp artifacts/gitforest-macos-arm64/gitforest-macos-arm64.tar.gz.sha256 \
             gs://gitforest-executables/macos-arm64/
+          gsutil cp artifacts/gitforest-windows-x64/gitforest-windows-x64.zip \
+            gs://gitforest-executables/windows-x64/
+          gsutil cp artifacts/gitforest-windows-x64/gitforest-windows-x64.zip.sha256 \
+            gs://gitforest-executables/windows-x64/
           gsutil cp artifacts/gitforest-deb/gitforest_${VERSION}_amd64.deb \
             gs://gitforest-executables/linux-x64/
           gsutil cp artifacts/gitforest-deb/gitforest_${VERSION}_amd64.deb.sha256 \
@@ -211,6 +234,7 @@ jobs:
           gsutil cp artifacts/gitforest-deb/gitforest_${VERSION}_amd64.deb \
             gs://gitforest-executables/linux-x64/gitforest_amd64.deb
           gsutil cp install.sh gs://gitforest-executables/install.sh
+          gsutil cp install.ps1 gs://gitforest-executables/install.ps1
           for f in artifacts/gitforest-desktop-linux/*.deb; do
             gsutil cp "$f" gs://gitforest-executables/desktop/gitforest-desktop-linux-x64.deb
           done
@@ -239,7 +263,10 @@ jobs:
               "install": "https://storage.googleapis.com/gitforest-executables/install.sh",
               "desktop-linux-deb": "https://storage.googleapis.com/gitforest-executables/desktop/gitforest-desktop-linux-x64.deb",
               "desktop-linux-appimage": "https://storage.googleapis.com/gitforest-executables/desktop/gitforest-desktop-linux-x64.AppImage",
-              "desktop-macos-dmg": "https://storage.googleapis.com/gitforest-executables/desktop/gitforest-desktop-macos-arm64.dmg"
+              "desktop-macos-dmg": "https://storage.googleapis.com/gitforest-executables/desktop/gitforest-desktop-macos-arm64.dmg",
+              "windows-zip": "https://storage.googleapis.com/gitforest-executables/windows-x64/gitforest-windows-x64.zip",
+              "windows-zip-sha256": "https://storage.googleapis.com/gitforest-executables/windows-x64/gitforest-windows-x64.zip.sha256",
+              "install-ps1": "https://storage.googleapis.com/gitforest-executables/install.ps1"
             }
           }
           EOF
@@ -247,7 +274,7 @@ jobs:
             gs://gitforest-executables/manifest.json
 
   release:
-    needs: [gates, build-linux, build-macos, build-deb, build-desktop-linux, build-desktop-macos]
+    needs: [gates, build-linux, build-macos, build-windows, build-deb, build-desktop-linux, build-desktop-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -262,9 +289,11 @@ jobs:
           test -f artifacts/gitforest-linux-x64/gitforest-linux-x64.tar.gz
           test -f artifacts/gitforest-macos-arm64/gitforest-macos-arm64.tar.gz
           test -f artifacts/gitforest-deb/gitforest_${VERSION}_amd64.deb
+          test -f artifacts/gitforest-windows-x64/gitforest-windows-x64.zip
           test "$(tar -xzf artifacts/gitforest-linux-x64/gitforest-linux-x64.tar.gz -O gitforest/VERSION)" = "$VERSION"
           test "$(tar -xzf artifacts/gitforest-macos-arm64/gitforest-macos-arm64.tar.gz -O gitforest/VERSION)" = "$VERSION"
-          for sidecar in artifacts/gitforest-linux-x64/*.sha256 artifacts/gitforest-macos-arm64/*.sha256 artifacts/gitforest-deb/*.sha256; do
+          test "$(unzip -p artifacts/gitforest-windows-x64/gitforest-windows-x64.zip gitforest/VERSION)" = "$VERSION"
+          for sidecar in artifacts/gitforest-linux-x64/*.sha256 artifacts/gitforest-macos-arm64/*.sha256 artifacts/gitforest-windows-x64/*.sha256 artifacts/gitforest-deb/*.sha256; do
             (cd "$(dirname "$sidecar")" && sha256sum -c "$(basename "$sidecar")")
           done
           (cd artifacts && find . -type f -exec sha256sum {} + | sort > ../SHA256SUMS.txt)
@@ -274,4 +303,5 @@ jobs:
             artifacts/**/*
             SHA256SUMS.txt
             install.sh
+            install.ps1
           generate_release_notes: true

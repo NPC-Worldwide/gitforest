@@ -4,7 +4,7 @@ set -e
 cd "$(dirname "$0")"
 
 # Build images via compose (creates git-forest-seeder, git-forest-bootstrap, git-forest-leecher)
-echo "Building GitForest Docker images..."
+echo "Building gitforest Docker images..."
 docker compose build
 
 # Create network if needed (ignore "already exists" errors)

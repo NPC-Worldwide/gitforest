@@ -13,7 +13,7 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -86,9 +86,9 @@ jobs:
           Section: vcs
           Priority: optional
           Architecture: amd64
-          Maintainer: GitForest Team <team@gitforest.dev>
+          Maintainer: gitforest team <team@gitforest.dev>
           Description: P2P git hosting over libp2p
-           GitForest lets you host and clone git repositories peer-to-peer
+           gitforest lets you host and clone git repositories peer-to-peer
            without a central server, using Kademlia DHT and mDNS discovery.
           EOF
           dpkg-deb --build debian gitforest_${VERSION}_amd64.deb
