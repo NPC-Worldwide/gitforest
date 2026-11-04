@@ -483,6 +483,7 @@ mod tests {
         };
         let identity = Identity::generate();
         let (dht, _rx) = gt_dht::DhtNodeSender::for_test();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         let blob_store = Arc::new(gt_lfs::store::BlobStore::new(&data_dir));
         let state = crate::api::AppState {
             config,
@@ -523,6 +524,8 @@ mod tests {
             peer_served: crate::api::PeerServeStats::default(),
             identity_path: tmp.join("identity.key"),
             analytics_history: std::collections::VecDeque::new(),
+            shutdown_tx: Arc::new(std::sync::Mutex::new(Some(shutdown_tx))),
+            shutdown_rx: std::sync::Mutex::new(Some(shutdown_rx)),
         };
         Arc::new(RwLock::new(state))
     }

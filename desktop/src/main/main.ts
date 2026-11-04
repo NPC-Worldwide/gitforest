@@ -18,6 +18,13 @@ const GF_DATA_DIR = path.join(os.homedir(), '.local', 'share', 'gitforest');
 const TOKEN_PATH = path.join(GF_DATA_DIR, 'api.token');
 const ONBOARDED_PATH = path.join(GF_DATA_DIR, '.onboarded');
 
+const APP_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+    return pkg.version as string;
+  } catch { return '0.0.0'; }
+})();
+
 let daemonProcess: ChildProcess | null = null;
 let weOwnDaemon = false;
 let mainWindow: BrowserWindow | null = null;
@@ -134,18 +141,28 @@ function spawnDaemon(): boolean {
   return true;
 }
 
-async function daemonStatusVersion(): Promise<string | null> {
+async function daemonStatus(): Promise<{ version: string | null; pid: number | null }> {
   try {
+    const token = readApiToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 1500);
-    const res = await fetch(`${DAEMON_URL}/api/status`, { signal: controller.signal });
+    const res = await fetch(`${DAEMON_URL}/api/status`, { signal: controller.signal, headers });
     clearTimeout(t);
-    if (!res.ok) return null;
+    if (!res.ok) return { version: null, pid: null };
     const data: any = await res.json();
-    return typeof data?.version === 'string' ? data.version : null;
+    return {
+      version: typeof data?.version === 'string' ? data.version : null,
+      pid: typeof data?.pid === 'number' ? data.pid : null,
+    };
   } catch {
-    return null;
+    return { version: null, pid: null };
   }
+}
+
+async function daemonStatusVersion(): Promise<string | null> {
+  return (await daemonStatus()).version;
 }
 
 function versionsMatch(a: string | null, b: string): boolean {
@@ -158,15 +175,11 @@ export async function ensureDaemon(): Promise<{ ok: boolean; reason?: string }> 
     const dv = await daemonStatusVersion();
     if (versionsMatch(dv, APP_VERSION)) return { ok: true };
     console.log(`[gf:main] daemon version ${dv ?? 'unknown'} does not match app ${APP_VERSION} (owned=${weOwnDaemon})`);
+    // Never kill a daemon we did not spawn behind the user's back at launch;
+    // the version banner offers an explicit restart instead.
     if (!weOwnDaemon) return { ok: true, reason: 'version-mismatch-external' };
-    stopDaemon();
-    await new Promise(r => setTimeout(r, 1200));
-    if (!spawnDaemon()) return { ok: false, reason: 'binary-not-found' };
-    const up = await waitForDaemon();
-    if (!up) return { ok: false, reason: 'startup-timeout' };
-    const dv2 = await daemonStatusVersion();
-    console.log(`[gf:main] daemon restarted, now at version ${dv2 ?? 'unknown'}`);
-    return { ok: true };
+    const r = await restartDaemon();
+    return r.ok ? { ok: true } : { ok: false, reason: r.reason };
   }
   if (!spawnDaemon()) return { ok: false, reason: 'binary-not-found' };
   const up = await waitForDaemon();
@@ -184,6 +197,171 @@ export function stopDaemon(): void {
   }
   daemonProcess = null;
   weOwnDaemon = false;
+}
+
+async function waitForDaemonDown(maxAttempts = 25, delayMs = 300): Promise<boolean> {
+  for (let i = 0; i < maxAttempts; i++) {
+    if (!(await daemonHealthy())) return true;
+    await new Promise(r => setTimeout(r, delayMs));
+  }
+  return !(await daemonHealthy());
+}
+
+/// Ask a running daemon (ours or external) to shut itself down via the
+/// local-auth shutdown endpoint. New daemons only; older ones fall through
+/// to the pid-based paths in stopAnyDaemon.
+async function requestDaemonShutdown(): Promise<boolean> {
+  try {
+    const token = readApiToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch(`${DAEMON_URL}/api/daemon/shutdown`, {
+      method: 'POST',
+      headers,
+      signal: controller.signal,
+    });
+    clearTimeout(t);
+    console.log(`[gf:main] daemon shutdown request -> HTTP ${res.status}`);
+    return res.ok;
+  } catch (e) {
+    console.log(`[gf:main] daemon shutdown request failed: ${(e as Error).message}`);
+    return false;
+  }
+}
+
+function readPidfilePid(): number | null {
+  const dirs = [process.env.XDG_RUNTIME_DIR, os.tmpdir(), GF_DATA_DIR]
+    .filter((d): d is string => !!d);
+  for (const dir of [...new Set(dirs)]) {
+    try {
+      const raw = fs.readFileSync(path.join(dir, 'gitforest.pid'), 'utf8').trim();
+      const pid = Number.parseInt(raw, 10);
+      if (Number.isFinite(pid) && pid > 0) return pid;
+    } catch {}
+  }
+  return null;
+}
+
+function isGitforestPid(pid: number): boolean {
+  if (!pid || pid === process.pid) return false;
+  try {
+    if (process.platform === 'win32') {
+      const out = execFileSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], {
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+      return /gitforest/i.test(out);
+    }
+    const comm = execFileSync('ps', ['-p', String(pid), '-o', 'comm='], {
+      encoding: 'utf8',
+      timeout: 5000,
+    }).trim();
+    return comm.toLowerCase().includes('gitforest');
+  } catch {
+    return false;
+  }
+}
+
+function findDaemonPids(): number[] {
+  try {
+    if (process.platform === 'win32') {
+      const out = execFileSync('tasklist', ['/FI', 'IMAGENAME eq gitforest.exe', '/FO', 'CSV', '/NH'], {
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+      return out
+        .split('\n')
+        .map(l => Number.parseInt((l.split('","')[1] || '').replace(/"/g, ''), 10))
+        .filter(p => Number.isFinite(p) && p > 0);
+    }
+    const out = execFileSync('pgrep', ['-x', 'gitforest'], { encoding: 'utf8', timeout: 5000 });
+    return out
+      .split('\n')
+      .map(l => Number.parseInt(l.trim(), 10))
+      .filter(p => Number.isFinite(p) && p > 0);
+  } catch {
+    return [];
+  }
+}
+
+async function killDaemonPid(pid: number): Promise<boolean> {
+  if (!isGitforestPid(pid)) {
+    console.log(`[gf:main] refusing to signal pid ${pid}: not a gitforest process`);
+    return false;
+  }
+  console.log(`[gf:main] stopping daemon pid ${pid}`);
+  if (process.platform === 'win32') {
+    try { execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' }); } catch {}
+  } else {
+    try { process.kill(pid, 'SIGTERM'); } catch {}
+    if (await waitForDaemonDown(12, 300)) return true;
+    try { process.kill(pid, 'SIGKILL'); } catch {}
+  }
+  return waitForDaemonDown(12, 300);
+}
+
+/// Stop whatever daemon answers on the API port, whether this app spawned it
+/// or it was started externally (CLI, install script, service). Tries, in
+/// order: our own child process, the shutdown API, `gitforest daemon --stop`
+/// (pidfile), and direct pid signalling. Reports honestly when the daemon is
+/// still running afterwards.
+export async function stopAnyDaemon(): Promise<{ ok: boolean; stopped: boolean; wasOwned: boolean; error?: string }> {
+  const wasOwned = weOwnDaemon && !!daemonProcess;
+  if (!(await daemonHealthy())) {
+    if (wasOwned) stopDaemon();
+    return { ok: true, stopped: false, wasOwned };
+  }
+  const statusBefore = await daemonStatus();
+  console.log(`[gf:main] stopping daemon (owned=${wasOwned}, version=${statusBefore.version ?? 'unknown'}, pid=${statusBefore.pid ?? 'unknown'})`);
+
+  if (daemonProcess && weOwnDaemon) {
+    stopDaemon();
+    if (await waitForDaemonDown()) return { ok: true, stopped: true, wasOwned };
+  }
+
+  await requestDaemonShutdown();
+  if (await waitForDaemonDown()) return { ok: true, stopped: true, wasOwned };
+
+  const { gitforest } = findBinaries();
+  if (gitforest) {
+    const r = await runCmd(gitforest, ['daemon', '--stop'], 12000);
+    console.log(`[gf:main] gitforest daemon --stop exited ${r.code}`);
+    if (await waitForDaemonDown()) return { ok: true, stopped: true, wasOwned };
+  }
+
+  const pidCandidates = [statusBefore.pid, readPidfilePid(), ...findDaemonPids()];
+  for (const pid of [...new Set(pidCandidates)]) {
+    if (pid && (await killDaemonPid(pid))) return { ok: true, stopped: true, wasOwned };
+  }
+
+  const stillRunning = await daemonHealthy();
+  return {
+    ok: !stillRunning,
+    stopped: !stillRunning,
+    wasOwned,
+    ...(stillRunning ? { error: 'daemon still running after shutdown, API-stop, and pid-stop attempts' } : {}),
+  };
+}
+
+/// Stop any running daemon and start the bundled, version-matched one. This
+/// is the in-app daemon update path: an external or stale daemon is replaced
+/// by the binary shipped with this app version.
+export async function restartDaemon(): Promise<{ ok: boolean; reason?: string; daemonVersion?: string | null }> {
+  const stop = await stopAnyDaemon();
+  if (!stop.ok) {
+    return { ok: false, reason: stop.error || 'stop-failed', daemonVersion: (await daemonStatus()).version };
+  }
+  if (!spawnDaemon()) return { ok: false, reason: 'binary-not-found' };
+  const up = await waitForDaemon();
+  if (!up) return { ok: false, reason: 'startup-timeout' };
+  const status = await daemonStatus();
+  console.log(`[gf:main] daemon restarted at version ${status.version ?? 'unknown'} (app ${APP_VERSION}, pid ${status.pid ?? 'unknown'})`);
+  if (!versionsMatch(status.version, APP_VERSION)) {
+    return { ok: false, reason: 'version-mismatch-after-restart', daemonVersion: status.version };
+  }
+  return { ok: true, daemonVersion: status.version };
 }
 
 // ---------- generic API proxy (adds bearer token) ----------
@@ -303,10 +481,12 @@ app.on('window-all-closed', () => {
 
 ipcMain.handle('gf:daemon-state', async () => {
   const running = await daemonHealthy();
+  const status = running ? await daemonStatus() : { version: null, pid: null };
   return {
     running,
     owned: weOwnDaemon,
-    daemonVersion: running ? await daemonStatusVersion() : null,
+    daemonVersion: status.version,
+    daemonPid: status.pid,
     appVersion: APP_VERSION,
   };
 });
@@ -320,16 +500,17 @@ ipcMain.handle('gf:daemon-start', async () => {
 
 ipcMain.handle('gf:daemon-stop', async () => {
   console.log('[gf:main] daemon stop requested');
-  stopDaemon();
-  return { ok: true };
+  const r = await stopAnyDaemon();
+  console.log('[gf:main] daemon stop result', r);
+  mainWindow?.webContents.send('daemon-state-changed', { running: !r.stopped && (await daemonHealthy()) });
+  return r;
 });
 
 ipcMain.handle('gf:daemon-restart', async () => {
   console.log('[gf:main] daemon restart requested');
-  stopDaemon();
-  await new Promise(r => setTimeout(r, 1200));
-  const r = await ensureDaemon();
+  const r = await restartDaemon();
   console.log('[gf:main] daemon restart result', r);
+  mainWindow?.webContents.send('daemon-state-changed', { running: r.ok });
   return r;
 });
 
@@ -408,13 +589,6 @@ ipcMain.on('window-maximize', () => {
   else mainWindow.maximize();
 });
 ipcMain.handle('window-is-maximized', () => mainWindow?.isMaximized() ?? false);
-
-const APP_VERSION = (() => {
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
-    return pkg.version as string;
-  } catch { return '0.0.0'; }
-})();
 
 function cmpVer(a: string, b: string): number {
   const pa = a.replace(/^v/, '').split('.').map(Number);
@@ -528,23 +702,33 @@ ipcMain.handle('install-update', async (_e, filePath: string, kind: string) => {
       if (r.code !== 0) throw new Error(r.stderr.trim().split('\n').pop() || 'package install failed');
       console.log('[gf:main] update install: deb installed');
     } else if (process.platform === 'darwin' && kind === 'dmg') {
+      // Stop any daemon (including an external one) before replacing the
+      // bundle: the bundled daemon binary lives inside it, and the old
+      // daemon would otherwise keep holding the API port after relaunch.
+      await stopAnyDaemon();
       const mnt = path.join(os.tmpdir(), 'gf-update-mnt');
       fs.rmSync(mnt, { recursive: true, force: true });
       fs.mkdirSync(mnt, { recursive: true });
       const attached = await runCmd('hdiutil', ['attach', '-nobrowse', '-mountpoint', mnt, filePath]);
       if (attached.code !== 0) throw new Error('could not mount update image');
       try {
-        const src = path.join(mnt, 'gitforest.app');
-        if (!fs.existsSync(src)) throw new Error('update image has no gitforest.app');
-        fs.rmSync('/Applications/gitforest.app', { recursive: true, force: true });
-        fs.cpSync(src, '/Applications/gitforest.app', { recursive: true });
+        const appEntry = fs.readdirSync(mnt).find(f => f.endsWith('.app'));
+        if (!appEntry) throw new Error('update image has no .app bundle');
+        const src = path.join(mnt, appEntry);
+        const currentBundle = path.resolve(path.dirname(process.execPath), '..', '..');
+        const dest = app.isPackaged && currentBundle.endsWith('.app') && fs.existsSync(currentBundle)
+          ? currentBundle
+          : '/Applications/gitforest.app';
+        console.log(`[gf:main] update install: replacing ${dest} with ${src}`);
+        fs.rmSync(dest, { recursive: true, force: true });
+        fs.cpSync(src, dest, { recursive: true });
       } finally {
         await runCmd('hdiutil', ['detach', mnt]);
       }
     } else {
       throw new Error('unsupported platform for in-app update');
     }
-    stopDaemon();
+    await stopAnyDaemon();
     try { fs.rmSync(filePath); } catch {}
     console.log('[gf:main] update install complete, relaunching');
     app.relaunch();

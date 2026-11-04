@@ -747,12 +747,26 @@ async fn main() -> Result<()> {
         } => {
             let pidfile = daemon_pidfile();
             if *stop {
+                // Preferred path: ask the API to shut itself down. Works on
+                // every platform and needs no pidfile.
+                let config = load_config(&cli.config).unwrap_or_default();
+                let url = format!("{}/api/daemon/shutdown", daemon_base_url(&config));
+                let resp = daemon_client()
+                    .post(&url)
+                    .timeout(std::time::Duration::from_secs(5))
+                    .send()
+                    .await;
+                if let Ok(r) = resp {
+                    if r.status().is_success() {
+                        println!("Daemon shutdown requested via API");
+                        return Ok(());
+                    }
+                }
+                // Fallback for daemons too old to have the shutdown endpoint.
                 if let Ok(pid_str) = std::fs::read_to_string(&pidfile) {
                     if let Ok(pid) = pid_str.trim().parse::<i32>() {
-                        let _ = std::process::Command::new("kill")
-                            .args(["-TERM", &pid.to_string()])
-                            .output();
-                        println!("Sent SIGTERM to daemon (pid {pid})");
+                        stop_pid(pid);
+                        println!("Sent stop signal to daemon (pid {pid})");
                         let _ = std::fs::remove_file(&pidfile);
                     } else {
                         eprintln!("Invalid pid in pidfile");
@@ -3119,6 +3133,26 @@ fn load_config(path: &Option<PathBuf>) -> Result<Config> {
             Some(p) => Config::load(&p).map_err(Into::into),
             None => Config::load_or_default().map_err(Into::into),
         },
+    }
+}
+
+/// Stop a process by pid: SIGTERM on Unix, taskkill on Windows.
+fn stop_pid(pid: i32) {
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .output();
+    }
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/PID", &pid.to_string()])
+            .output();
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = pid;
     }
 }
 

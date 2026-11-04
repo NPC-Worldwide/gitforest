@@ -3,6 +3,10 @@ import { Settings, Power, RefreshCw, RotateCcw, FileText, ArrowUpCircle, Externa
 
 export default function SettingsPage() {
   const [daemonRunning, setDaemonRunning] = useState(true);
+  const [daemonVersion, setDaemonVersion] = useState<string | null>(null);
+  const [daemonOwned, setDaemonOwned] = useState(true);
+  const [daemonPid, setDaemonPid] = useState<number | null>(null);
+  const [daemonError, setDaemonError] = useState<string | null>(null);
   const [log, setLog] = useState('');
   const [dataDir, setDataDir] = useState('');
   const [configDir, setConfigDir] = useState('');
@@ -29,6 +33,10 @@ export default function SettingsPage() {
       return;
     }
     setDaemonRunning(ds.running);
+    setDaemonVersion(typeof ds.daemonVersion === 'string' ? ds.daemonVersion : null);
+    setDaemonOwned(ds.owned !== false);
+    setDaemonPid(typeof ds.daemonPid === 'number' ? ds.daemonPid : null);
+    console.log('[gf:settings] daemon state', JSON.stringify({ running: ds.running, daemon: ds.daemonVersion, daemonPid: ds.daemonPid, owned: ds.owned, app: ds.appVersion }));
     if (l.ok) setLog(l.data || '');
     else console.error('[gf:settings] read log failed', l);
     setDataDir(dd);
@@ -41,7 +49,7 @@ export default function SettingsPage() {
     try {
       const r: any = await window.gf.checkForUpdates?.();
       if (r?.success) {
-        console.log('[gf:update] check ok', { current: r.currentVersion, latest: r.latestVersion, hasUpdate: r.hasUpdate, asset: r.asset?.kind || null });
+        console.log('[gf:update] check ok', JSON.stringify({ current: r.currentVersion, latest: r.latestVersion, hasUpdate: r.hasUpdate, asset: r.asset?.kind || null, devMode: r.devMode }));
         setUpdate(r);
       } else {
         console.error('[gf:update] check failed', r?.error);
@@ -108,7 +116,19 @@ export default function SettingsPage() {
 
   const act = async (fn: () => Promise<any>) => {
     setBusy(true);
-    await fn();
+    setDaemonError(null);
+    let r: any;
+    try {
+      r = await fn();
+    } catch (e) {
+      console.error('[gf:settings] daemon action threw', e);
+      setDaemonError((e as Error).message);
+      setBusy(false);
+      load();
+      return;
+    }
+    console.log('[gf:settings] daemon action result', JSON.stringify(r));
+    if (r && r.ok === false) setDaemonError(r.error || r.reason || 'Daemon action failed');
     setBusy(false);
     load();
   };
@@ -188,9 +208,15 @@ export default function SettingsPage() {
           </div>
         </div>
         <div className="space-y-1.5 text-xs theme-text-muted">
+          <p>
+            Daemon: <code>v{daemonVersion || 'unknown'}</code>
+            {daemonRunning && <> · {daemonOwned ? 'started by this app' : 'started outside the app'}{daemonPid ? <> · pid <code>{daemonPid}</code></> : null}</>}
+            {!daemonOwned && daemonVersion !== appVersion && <> · Restart replaces it with the bundled v{appVersion} daemon.</>}
+          </p>
           <p>Config: <code>{configDir}</code></p>
           <p>Data: <code>{dataDir}</code></p>
           <p>API: <code>http://127.0.0.1:7878</code> · P2P: <code>9418</code> · App: v{appVersion}</p>
+          {daemonError && <p className="text-red-500">{daemonError}</p>}
         </div>
       </div>
 

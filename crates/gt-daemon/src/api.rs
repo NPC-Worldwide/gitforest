@@ -84,6 +84,12 @@ pub struct AppState {
     pub peer_served: PeerServeStats,
     pub identity_path: std::path::PathBuf,
     pub analytics_history: VecDeque<AnalyticsSample>,
+    /// One-shot graceful-shutdown signal for `POST /api/daemon/shutdown`.
+    /// The sender is consumed by the handler; the receiver is taken once by
+    /// `start_api` and wired into the server's graceful-shutdown future, so
+    /// the desktop app can stop a daemon it did not spawn.
+    pub shutdown_tx: Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
+    pub shutdown_rx: std::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -206,6 +212,7 @@ impl AppState {
             }
         }
 
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         let workers_path = config.data_dir.join("workers.json");
         let submitters_path = config.data_dir.join("submitters.json");
         let credit_path = config.data_dir.join("mutual_credit.json");
@@ -253,6 +260,8 @@ impl AppState {
             peer_served: PeerServeStats::default(),
             identity_path,
             analytics_history: VecDeque::new(),
+            shutdown_tx: Arc::new(std::sync::Mutex::new(Some(shutdown_tx))),
+            shutdown_rx: std::sync::Mutex::new(Some(shutdown_rx)),
         }
     }
 }
@@ -469,6 +478,7 @@ pub async fn start_api(
         .route("/api/repos/{name}/log", get(get_repo_log))
         // Network
         .route("/api/status", get(get_status))
+        .route("/api/daemon/shutdown", post(shutdown_daemon))
         .route("/api/analytics/summary", get(get_analytics_summary))
         .route("/api/analytics/history", get(get_analytics_history))
         .route("/api/peers", get(get_peers))
@@ -636,11 +646,25 @@ pub async fn start_api(
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{api_port}")).await?;
     info!("API listening on http://0.0.0.0:{api_port}");
     info!("Git protocol server on port {git_port}");
-    axum::serve(
+    let shutdown_rx = {
+        let s = state.read().await;
+        s.shutdown_rx.lock().ok().and_then(|mut rx| rx.take())
+    };
+    let server = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await?;
+    );
+    match shutdown_rx {
+        Some(rx) => {
+            server
+                .with_graceful_shutdown(async move {
+                    let _ = rx.await;
+                    info!("API shutdown signal received; draining connections");
+                })
+                .await?
+        }
+        None => server.await?,
+    }
 
     Ok(())
 }
@@ -2214,6 +2238,32 @@ async fn get_repo_log(
 
 // ============ Network ============
 
+/// Gracefully stop this daemon. Local-auth only: the caller must present the
+/// API token from `api.token`, which only local processes can read. This is
+/// what lets the desktop app stop or restart a daemon it did not spawn (for
+/// example one started from the CLI) so it can replace it with the bundled,
+/// version-matched binary.
+async fn shutdown_daemon(
+    State(state): State<Arc<RwLock<AppState>>>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let shutdown_tx = {
+        let s = state.read().await;
+        check_local_auth(&headers, &s.api_token)?;
+        s.shutdown_tx.clone()
+    };
+    info!("Daemon shutdown requested via local API");
+    if let Ok(mut tx) = shutdown_tx.lock() {
+        if let Some(tx) = tx.take() {
+            let _ = tx.send(());
+        }
+    }
+    Ok(Json(serde_json::json!({
+        "status": "shutting-down",
+        "version": env!("CARGO_PKG_VERSION"),
+    })))
+}
+
 async fn get_status(State(state): State<Arc<RwLock<AppState>>>) -> Json<serde_json::Value> {
     let state = state.read().await;
     let peer_id = state.identity.peer_id();
@@ -2221,6 +2271,7 @@ async fn get_status(State(state): State<Arc<RwLock<AppState>>>) -> Json<serde_js
         .map(|name| gt_core::identity::PeerName::new(name, peer_id.clone()).short_tag());
     Json(serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
+        "pid": std::process::id(),
         "peer_id": peer_id.to_string(),
         "peer_name": peer_name,
         "repos_hosted": state.config.repos.len(),
@@ -6966,6 +7017,7 @@ mod tests {
         config.save(&config_path).unwrap();
         let identity = Identity::generate();
         let (dht, cmd_rx) = gt_dht::DhtNodeSender::for_test();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         let blob_store = Arc::new(BlobStore::new(&data_dir));
         let state = AppState {
             config,
@@ -7006,6 +7058,8 @@ mod tests {
             peer_served: PeerServeStats::default(),
             identity_path: tmp.join("identity.key"),
             analytics_history: VecDeque::new(),
+            shutdown_tx: Arc::new(std::sync::Mutex::new(Some(shutdown_tx))),
+            shutdown_rx: std::sync::Mutex::new(Some(shutdown_rx)),
         };
         (Arc::new(RwLock::new(state)), tmp, cmd_rx)
     }
@@ -13723,6 +13777,46 @@ jobs:
             fire_due_schedules(&mut s, &later);
             assert_eq!(s.workflow_runs.list().len(), 2);
         }
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[tokio::test]
+    async fn test_status_reports_version_and_pid() {
+        let (state, tmp, _rx) = test_state("status-version");
+        let Json(body) = get_status(State(state)).await;
+        assert_eq!(
+            body.get("version").and_then(|v| v.as_str()),
+            Some(env!("CARGO_PKG_VERSION"))
+        );
+        assert_eq!(
+            body.get("pid").and_then(|v| v.as_u64()),
+            Some(std::process::id() as u64)
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_daemon_signals_shutdown() {
+        let (state, tmp, _rx) = test_state("shutdown");
+        let shutdown_rx = {
+            let s = state.read().await;
+            let rx = s
+                .shutdown_rx
+                .lock()
+                .unwrap()
+                .take()
+                .expect("shutdown receiver present");
+            rx
+        };
+        let res = shutdown_daemon(State(state.clone()), axum::http::HeaderMap::new()).await;
+        assert!(res.is_ok());
+        tokio::time::timeout(std::time::Duration::from_secs(2), shutdown_rx)
+            .await
+            .expect("shutdown signal timed out")
+            .expect("shutdown sender dropped without signaling");
+        // A second request stays harmless once shutdown is already signaled.
+        let res = shutdown_daemon(State(state), axum::http::HeaderMap::new()).await;
+        assert!(res.is_ok());
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }
