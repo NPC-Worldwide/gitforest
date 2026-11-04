@@ -28,7 +28,8 @@ use gt_lfs::tracker::BlobTracker;
 use gt_lfs::transfer::TransferManager;
 use gt_transport::git_bridge;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, VecDeque};
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::Command;
@@ -1631,53 +1632,267 @@ async fn list_repos(State(state): State<Arc<RwLock<AppState>>>) -> Json<Vec<serd
     Json(repos)
 }
 
+fn normalize_ref_pair(first: &str, second: &str) -> Option<(String, String)> {
+    let first = first.trim();
+    let second = second.trim();
+    let is_ref = |value: &str| value == "HEAD" || value.starts_with("refs/");
+    let is_sha = |value: &str| {
+        (7..=64).contains(&value.len())
+            && value.bytes().all(|b| b.is_ascii_hexdigit())
+            && value.bytes().any(|b| b != b'0')
+    };
+    if is_ref(second) && is_sha(first) {
+        Some((first.to_ascii_lowercase(), second.to_string()))
+    } else if is_ref(first) && is_sha(second) {
+        Some((second.to_ascii_lowercase(), first.to_string()))
+    } else {
+        None
+    }
+}
+
+fn ref_pairs_from_json(value: Option<&serde_json::Value>) -> Vec<(String, String)> {
+    let Some(items) = value.and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|item| {
+            if let Some(pair) = item.as_array() {
+                if pair.len() == 2 {
+                    return normalize_ref_pair(
+                        pair[0].as_str().unwrap_or(""),
+                        pair[1].as_str().unwrap_or(""),
+                    );
+                }
+            }
+            let sha = item
+                .get("sha")
+                .or_else(|| item.get("oid"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let ref_name = item
+                .get("ref")
+                .or_else(|| item.get("refname"))
+                .or_else(|| item.get("name"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            normalize_ref_pair(sha, ref_name)
+        })
+        .collect()
+}
+
+fn history_details_from_refs(
+    refs: &[(String, String)],
+) -> (Option<String>, Option<String>, Vec<(String, String)>) {
+    let mut normalized: Vec<(String, String)> = refs
+        .iter()
+        .filter_map(|(first, second)| normalize_ref_pair(first, second))
+        .collect();
+    normalized.sort();
+    normalized.dedup();
+
+    let head_sha = normalized
+        .iter()
+        .find(|(_, ref_name)| ref_name == "HEAD")
+        .or_else(|| {
+            ["refs/heads/main", "refs/heads/master", "refs/heads/trunk"]
+                .iter()
+                .find_map(|wanted| normalized.iter().find(|(_, ref_name)| ref_name == wanted))
+        })
+        .or_else(|| {
+            let branches: Vec<_> = normalized
+                .iter()
+                .filter(|(_, ref_name)| ref_name.starts_with("refs/heads/"))
+                .collect();
+            (branches.len() == 1).then(|| branches[0])
+        })
+        .map(|(sha, _)| sha.clone());
+
+    let mut history_refs: Vec<(String, String)> = normalized
+        .into_iter()
+        .filter(|(_, ref_name)| {
+            ref_name.starts_with("refs/heads/") || ref_name.starts_with("refs/tags/")
+        })
+        .collect();
+    history_refs.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+    history_refs.dedup_by(|a, b| a.0 == b.0 && a.1 == b.1);
+    if history_refs.is_empty() {
+        return (None, head_sha, history_refs);
+    }
+
+    let mut hasher = Sha256::new();
+    if let Some(head_sha) = &head_sha {
+        // A commit SHA identifies its full ancestry. Seed copies may carry
+        // different extra branches, tags, or remote-tracking refs, so the
+        // current HEAD is the clear shared-history anchor when available.
+        hasher.update(b"head");
+        hasher.update([0]);
+        hasher.update(head_sha.as_bytes());
+        hasher.update(b"\n");
+    } else {
+        for (sha, ref_name) in &history_refs {
+            hasher.update(ref_name.as_bytes());
+            hasher.update([0]);
+            hasher.update(sha.as_bytes());
+            hasher.update(b"\n");
+        }
+    }
+    (Some(hex::encode(hasher.finalize())), head_sha, history_refs)
+}
+
+#[derive(Clone)]
+struct NetworkRepoCopy {
+    name: String,
+    owner: String,
+    description: String,
+    clone_url: String,
+    history_id: String,
+    head_sha: String,
+    refs: Vec<(String, String)>,
+    host: String,
+}
+
 fn merge_network_repos(
     per_bootstrap: Vec<(String, Option<Vec<serde_json::Value>>)>,
 ) -> Vec<serde_json::Value> {
-    let mut merged: std::collections::HashMap<(String, String), serde_json::Value> =
-        std::collections::HashMap::new();
+    let mut groups: BTreeMap<(String, String, String), Vec<NetworkRepoCopy>> = BTreeMap::new();
     for (host, repos) in per_bootstrap {
         let Some(repos) = repos else { continue };
-        for r in repos {
-            let name = r.get("name").and_then(|v| v.as_str()).unwrap_or("").trim();
-            let owner = r.get("owner").and_then(|v| v.as_str()).unwrap_or("").trim();
+        for repo in repos {
+            let name = repo
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let owner = repo
+                .get("owner")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
             if name.is_empty() || owner.is_empty() {
                 continue;
             }
-            let entry = merged
-                .entry((owner.to_string(), name.to_string()))
-                .or_insert_with(|| {
-                    serde_json::json!({
-                        "name": name,
-                        "owner": owner,
-                        "description": r.get("description").and_then(|v| v.as_str()).unwrap_or(""),
-                        "clone_url": r.get("clone_url").and_then(|v| v.as_str()).unwrap_or(""),
-                        "seeders": 0,
-                        "seen_on": Vec::<String>::new(),
-                    })
-                });
-            let seen_on = entry.get_mut("seen_on").and_then(|v| v.as_array_mut());
-            if let Some(seen_on) = seen_on {
-                if !seen_on.iter().any(|v| v.as_str() == Some(host.as_str())) {
-                    seen_on.push(serde_json::Value::String(host.clone()));
-                    entry["seeders"] = serde_json::json!(seen_on.len());
-                }
-            }
-            for field in ["description", "clone_url"] {
-                if entry
-                    .get(field)
+            let refs = ref_pairs_from_json(repo.get("refs"));
+            let (computed_history_id, computed_head_sha, canonical_refs) =
+                history_details_from_refs(&refs);
+            let history_id = repo
+                .get("history_id")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(ToString::to_string)
+                .or(computed_history_id)
+                .unwrap_or_default();
+            let head_sha = repo
+                .get("head_sha")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(ToString::to_string)
+                .or(computed_head_sha)
+                .unwrap_or_default();
+            let key = if history_id.is_empty() {
+                ("owner".to_string(), owner.clone(), name.clone())
+            } else {
+                ("history".to_string(), name.clone(), history_id.clone())
+            };
+            groups.entry(key).or_default().push(NetworkRepoCopy {
+                name,
+                owner,
+                description: repo
+                    .get("description")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
-                    .is_empty()
-                {
-                    if let Some(value) = r.get(field).and_then(|v| v.as_str()) {
-                        entry[field] = serde_json::Value::String(value.to_string());
-                    }
-                }
-            }
+                    .trim()
+                    .to_string(),
+                clone_url: repo
+                    .get("clone_url")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+                history_id,
+                head_sha,
+                refs: canonical_refs,
+                host: host.clone(),
+            });
         }
     }
-    let mut out: Vec<serde_json::Value> = merged.into_values().collect();
+
+    let mut out = Vec::new();
+    for copies in groups.into_values() {
+        let mut copies = copies;
+        copies.sort_by(|a, b| {
+            a.owner
+                .cmp(&b.owner)
+                .then_with(|| a.clone_url.cmp(&b.clone_url))
+                .then_with(|| a.host.cmp(&b.host))
+        });
+        let Some(first) = copies.first() else {
+            continue;
+        };
+        let name = first.name.clone();
+        let canonical = copies
+            .iter()
+            .find(|copy| !copy.clone_url.is_empty())
+            .unwrap_or(first);
+        let owners: Vec<String> = copies
+            .iter()
+            .map(|copy| copy.owner.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let clone_urls: Vec<String> = copies
+            .iter()
+            .map(|copy| copy.clone_url.clone())
+            .filter(|url| !url.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let seen_on: Vec<String> = copies
+            .iter()
+            .map(|copy| copy.host.clone())
+            .filter(|host| !host.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let description = copies
+            .iter()
+            .find(|copy| !copy.description.is_empty())
+            .map(|copy| copy.description.clone())
+            .unwrap_or_default();
+        let history_id = copies
+            .iter()
+            .find(|copy| !copy.history_id.is_empty())
+            .map(|copy| copy.history_id.clone())
+            .unwrap_or_default();
+        let head_sha = copies
+            .iter()
+            .find(|copy| !copy.head_sha.is_empty())
+            .map(|copy| copy.head_sha.clone())
+            .unwrap_or_default();
+        let refs = copies
+            .iter()
+            .find(|copy| !copy.refs.is_empty())
+            .map(|copy| copy.refs.clone())
+            .unwrap_or_default();
+        out.push(serde_json::json!({
+            "name": name,
+            "owner": canonical.owner,
+            "owners": owners,
+            "description": description,
+            "clone_url": canonical.clone_url,
+            "clone_urls": clone_urls,
+            "seeders": seen_on.len(),
+            "copies": copies.len(),
+            "history_id": history_id,
+            "head_sha": head_sha,
+            "ref_count": refs.len(),
+            "seen_on": seen_on,
+        }));
+    }
     out.sort_by(|a, b| {
         let seeders =
             |v: &serde_json::Value| v.get("seeders").and_then(|s| s.as_u64()).unwrap_or(0);
@@ -1687,11 +1902,118 @@ fn merge_network_repos(
                 .unwrap_or_default()
                 .to_lowercase()
         };
+        let owner = |v: &serde_json::Value| {
+            v.get("owner")
+                .and_then(|s| s.as_str())
+                .unwrap_or_default()
+                .to_string()
+        };
+        let history = |v: &serde_json::Value| {
+            v.get("history_id")
+                .and_then(|s| s.as_str())
+                .unwrap_or_default()
+                .to_string()
+        };
         seeders(b)
             .cmp(&seeders(a))
             .then_with(|| name(a).cmp(&name(b)))
+            .then_with(|| history(a).cmp(&history(b)))
+            .then_with(|| owner(a).cmp(&owner(b)))
     });
     out
+}
+
+fn url_path_segment(value: &str) -> String {
+    let mut out = String::new();
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
+fn url_host(host: &str) -> String {
+    if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]")
+    } else {
+        host.to_string()
+    }
+}
+
+async fn enrich_network_repo_history(
+    client: &reqwest::Client,
+    host: &str,
+    api_port: u16,
+    mut repo: serde_json::Value,
+) -> serde_json::Value {
+    let has_history = repo
+        .get("history_id")
+        .and_then(|v| v.as_str())
+        .is_some_and(|v| !v.trim().is_empty())
+        || !ref_pairs_from_json(repo.get("refs")).is_empty();
+    if has_history {
+        return repo;
+    }
+    let name = repo
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    if name.is_empty() {
+        return repo;
+    }
+    let url = format!(
+        "http://{}:{}/api/repos/{}/refs",
+        url_host(host),
+        api_port,
+        url_path_segment(name)
+    );
+    let refs = match client.get(&url).send().await {
+        Ok(resp) if resp.status().is_success() => resp
+            .json::<Vec<(String, String)>>()
+            .await
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    };
+    let (history_id, head_sha, canonical_refs) = history_details_from_refs(&refs);
+    if let Some(history_id) = history_id {
+        repo["history_id"] = serde_json::json!(history_id);
+    }
+    if let Some(head_sha) = head_sha {
+        repo["head_sha"] = serde_json::json!(head_sha);
+    }
+    if !canonical_refs.is_empty() {
+        repo["refs"] = serde_json::json!(canonical_refs
+            .iter()
+            .map(|(sha, ref_name)| serde_json::json!([sha, ref_name]))
+            .collect::<Vec<_>>());
+    }
+    repo
+}
+
+async fn enrich_network_repos_history(
+    client: reqwest::Client,
+    host: String,
+    api_port: u16,
+    repos: Vec<serde_json::Value>,
+) -> Vec<serde_json::Value> {
+    let mut set = tokio::task::JoinSet::new();
+    for repo in repos {
+        let client = client.clone();
+        let host = host.clone();
+        set.spawn(async move { enrich_network_repo_history(&client, &host, api_port, repo).await });
+    }
+    let mut enriched = Vec::new();
+    while let Some(joined) = set.join_next().await {
+        if let Ok(repo) = joined {
+            enriched.push(repo);
+        }
+    }
+    enriched
 }
 
 async fn list_network_repos(State(state): State<Arc<RwLock<AppState>>>) -> Json<serde_json::Value> {
@@ -1716,11 +2038,20 @@ async fn list_network_repos(State(state): State<Arc<RwLock<AppState>>>) -> Json<
                     Some("unparseable multiaddr".to_string()),
                 );
             };
-            let url = format!("http://{host}:{api_port}/api/repos");
+            let url = format!("http://{}:{api_port}/api/repos", url_host(host));
             match client.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => {
                     match resp.json::<serde_json::Value>().await {
-                        Ok(serde_json::Value::Array(repos)) => (peer, Some(repos), latency(), None),
+                        Ok(serde_json::Value::Array(repos)) => {
+                            let repos = enrich_network_repos_history(
+                                client.clone(),
+                                host.to_string(),
+                                api_port,
+                                repos,
+                            )
+                            .await;
+                            (peer, Some(repos), latency(), None)
+                        }
                         Ok(_) => (peer, None, latency(), Some("unexpected shape".to_string())),
                         Err(e) => (peer, None, latency(), Some(format!("bad json: {e}"))),
                     }
@@ -1744,7 +2075,11 @@ async fn list_network_repos(State(state): State<Arc<RwLock<AppState>>>) -> Json<
     let mut bootstraps = Vec::new();
     let mut per_bootstrap = Vec::new();
     for (peer, repos, latency_ms, error) in results {
-        let host = parse_peer_multiaddr(&peer).map(|(h, _)| h.to_string());
+        let host_port = parse_peer_multiaddr(&peer);
+        let host = host_port.map(|(h, _)| h.to_string());
+        let endpoint = host_port
+            .map(|(h, api_port)| format!("{}:{api_port}", url_host(h)))
+            .unwrap_or_default();
         let mut status = serde_json::json!({
             "ip": host.as_deref().unwrap_or(""),
             "ok": repos.is_some(),
@@ -1752,14 +2087,14 @@ async fn list_network_repos(State(state): State<Arc<RwLock<AppState>>>) -> Json<
         });
         if let Some(repos) = repos {
             status["repos"] = serde_json::json!(repos.len());
-            per_bootstrap.push((host.unwrap_or_default(), Some(repos)));
+            per_bootstrap.push((endpoint, Some(repos)));
         } else {
             status["repos"] = serde_json::json!(0);
             if let Some(error) = error {
                 warn!(peer = %peer, error = %error.chars().take(200).collect::<String>(), "network repos: bootstrap failed");
                 status["error"] = serde_json::Value::String(error.chars().take(200).collect());
             }
-            per_bootstrap.push((host.unwrap_or_default(), None));
+            per_bootstrap.push((endpoint, None));
         }
         bootstraps.push(status);
     }
@@ -8072,6 +8407,136 @@ mod tests {
         assert_eq!(merged[0]["description"], serde_json::json!("shell"));
         assert_eq!(merged[1]["name"], serde_json::json!("solo"));
         assert_eq!(merged[1]["seeders"], serde_json::json!(1));
+    }
+
+    #[test]
+    fn merge_network_repos_groups_mirrors_with_shared_history() {
+        let repo = |owner: &str, history_id: &str, description: &str| {
+            serde_json::json!({
+                "name": "npcsh",
+                "owner": owner,
+                "description": description,
+                "clone_url": format!("gitforest://{owner}/npcsh"),
+                "history_id": history_id,
+                "head_sha": "abc123",
+            })
+        };
+        let merged = merge_network_repos(vec![
+            (
+                "10.0.0.1".to_string(),
+                Some(vec![
+                    repo("ccc", "history-1", ""),
+                    repo("aaa", "history-1", "shell"),
+                ]),
+            ),
+            (
+                "10.0.0.2".to_string(),
+                Some(vec![repo("bbb", "history-1", "")]),
+            ),
+        ]);
+
+        assert_eq!(merged.len(), 1);
+        let entry = &merged[0];
+        assert_eq!(entry["name"], serde_json::json!("npcsh"));
+        assert_eq!(entry["owner"], serde_json::json!("aaa"));
+        assert_eq!(entry["owners"], serde_json::json!(["aaa", "bbb", "ccc"]));
+        assert_eq!(
+            entry["clone_url"],
+            serde_json::json!("gitforest://aaa/npcsh")
+        );
+        assert_eq!(
+            entry["clone_urls"],
+            serde_json::json!([
+                "gitforest://aaa/npcsh",
+                "gitforest://bbb/npcsh",
+                "gitforest://ccc/npcsh"
+            ])
+        );
+        assert_eq!(entry["seeders"], serde_json::json!(2));
+        assert_eq!(entry["copies"], serde_json::json!(3));
+        assert_eq!(entry["history_id"], serde_json::json!("history-1"));
+        assert_eq!(entry["head_sha"], serde_json::json!("abc123"));
+        assert_eq!(
+            entry["seen_on"],
+            serde_json::json!(["10.0.0.1", "10.0.0.2"])
+        );
+        assert_eq!(entry["description"], serde_json::json!("shell"));
+    }
+
+    #[test]
+    fn merge_network_repos_keeps_same_name_distinct_histories_separate() {
+        let repo = |owner: &str, history_id: Option<&str>| {
+            let mut value = serde_json::json!({
+                "name": "npcpy",
+                "owner": owner,
+                "description": "",
+                "clone_url": format!("gitforest://{owner}/npcpy"),
+            });
+            if let Some(history_id) = history_id {
+                value["history_id"] = serde_json::json!(history_id);
+            }
+            value
+        };
+        let merged = merge_network_repos(vec![
+            (
+                "10.0.0.1".to_string(),
+                Some(vec![
+                    repo("aaa", Some("history-1")),
+                    repo("bbb", Some("history-2")),
+                    repo("ccc", None),
+                ]),
+            ),
+            ("10.0.0.2".to_string(), Some(vec![repo("ddd", None)])),
+        ]);
+
+        assert_eq!(merged.len(), 4);
+        assert!(merged
+            .iter()
+            .all(|entry| entry["seeders"] == serde_json::json!(1)));
+    }
+
+    #[test]
+    fn history_details_from_refs_is_order_independent_and_detects_divergence() {
+        let main_sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let dev_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let other_main_sha = "cccccccccccccccccccccccccccccccccccccccc";
+        let refs = vec![
+            (main_sha.to_string(), "HEAD".to_string()),
+            (dev_sha.to_string(), "refs/heads/dev".to_string()),
+            (main_sha.to_string(), "refs/heads/main".to_string()),
+        ];
+        let reordered = vec![
+            (main_sha.to_string(), "refs/heads/main".to_string()),
+            (main_sha.to_string(), "HEAD".to_string()),
+            (dev_sha.to_string(), "refs/heads/dev".to_string()),
+            (dev_sha.to_string(), "refs/heads/dev".to_string()),
+        ];
+        let (history_id, head_sha, canonical_refs) = history_details_from_refs(&refs);
+        let (same_history_id, same_head_sha, _) = history_details_from_refs(&reordered);
+        assert_eq!(history_id, same_history_id);
+        assert_eq!(head_sha.as_deref(), Some(main_sha));
+        assert_eq!(same_head_sha.as_deref(), Some(main_sha));
+        assert_eq!(canonical_refs.len(), 2);
+
+        let diverged = vec![
+            (other_main_sha.to_string(), "HEAD".to_string()),
+            (other_main_sha.to_string(), "refs/heads/main".to_string()),
+            (dev_sha.to_string(), "refs/heads/dev".to_string()),
+        ];
+        let (diverged_history_id, _, _) = history_details_from_refs(&diverged);
+        assert_ne!(history_id, diverged_history_id);
+
+        let with_extra_branch = vec![
+            (main_sha.to_string(), "HEAD".to_string()),
+            (main_sha.to_string(), "refs/heads/main".to_string()),
+            (dev_sha.to_string(), "refs/heads/dev".to_string()),
+            (
+                main_sha.to_string(),
+                "refs/heads/gf-test-branch".to_string(),
+            ),
+        ];
+        let (extra_branch_history_id, _, _) = history_details_from_refs(&with_extra_branch);
+        assert_eq!(history_id, extra_branch_history_id);
     }
 
     #[test]

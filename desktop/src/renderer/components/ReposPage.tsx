@@ -3,6 +3,15 @@ import { GitBranch, Plus, RefreshCw, Copy, CheckCircle2, FolderOpen, Trash2, Git
 
 interface Repo { name: string; path: string; description?: string; seeding?: boolean }
 
+function networkRepoKey(r: any): string {
+  return r?.history_id ? `history:${r.name}:${r.history_id}` : `${r?.owner || ''}/${r?.name || ''}`;
+}
+
+function shortHash(v: unknown, chars = 12): string {
+  const s = String(v || '');
+  return s ? `${s.slice(0, chars)}…` : '–';
+}
+
 export default function ReposPage() {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [selected, setSelected] = useState<Repo | null>(null);
@@ -96,6 +105,7 @@ export default function ReposPage() {
       const repos = Array.isArray(n.data?.repos) ? n.data.repos : [];
       console.log('[gf:repos] network scan ok', {
         repos: repos.length,
+        copies: repos.reduce((n: number, r: any) => n + (r.copies || 1), 0),
         bootstraps: Array.isArray(n.data?.bootstraps)
           ? n.data.bootstraps.map((b: any) => `${b.ip}:${b.ok ? 'up' : 'down'}`).join(',')
           : '?',
@@ -203,6 +213,7 @@ export default function ReposPage() {
   };
 
   const cloneUrl = selected ? `gitforest://${peerId}/${selected.name}` : '';
+  const netCopyCount = netRepos.reduce((n: number, r: any) => n + (r.copies || (Array.isArray(r.owners) ? r.owners.length : 1) || 1), 0);
 
   return (
     <div className="flex h-full">
@@ -257,24 +268,29 @@ export default function ReposPage() {
         ))}
         {tab === 'network' && netMeta && (
           <p className="text-xs theme-text-muted px-4 pt-3">
-            {netRepos.length} repos · {Array.isArray(netMeta.bootstraps) ? netMeta.bootstraps.filter((b: any) => b.ok).length : 0}/{Array.isArray(netMeta.bootstraps) ? netMeta.bootstraps.length : 0} bootstraps up
+            {netRepos.length} repos{netCopyCount > netRepos.length ? ` · ${netCopyCount} copies` : ''} · {Array.isArray(netMeta.bootstraps) ? netMeta.bootstraps.filter((b: any) => b.ok).length : 0}/{Array.isArray(netMeta.bootstraps) ? netMeta.bootstraps.length : 0} bootstraps up
           </p>
         )}
         {tab === 'network' && netLoading && netRepos.length === 0 && <p className="text-xs theme-text-muted p-4">Scanning bootstrap nodes…</p>}
         {tab === 'network' && !netLoading && netRepos.length === 0 && <p className="text-xs theme-text-muted p-4">No network repos found. Are the bootstraps reachable?</p>}
-        {tab === 'network' && netRepos.map((r: any) => (
-          <button key={`${r.owner}/${r.name}`} onClick={() => { setSelected(null); setSelectedNet(r); setCloneNetErr(null); }}
-            className={`w-full text-left px-4 py-3 border-b theme-border ${selectedNet?.owner === r.owner && selectedNet?.name === r.name ? 'theme-bg-tertiary' : 'hover:theme-bg-tertiary'}`}>
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <GitBranch size={14} className="text-emerald-500 flex-shrink-0" />
-                <span className="text-sm theme-text-primary truncate">{r.name}</span>
+        {tab === 'network' && netRepos.map((r: any) => {
+          const copies = r.copies || (Array.isArray(r.owners) ? r.owners.length : 1);
+          return (
+            <button key={networkRepoKey(r)} onClick={() => { setSelected(null); setSelectedNet(r); setCloneNetErr(null); }}
+              className={`w-full text-left px-4 py-3 border-b theme-border ${selectedNet && networkRepoKey(selectedNet) === networkRepoKey(r) ? 'theme-bg-tertiary' : 'hover:theme-bg-tertiary'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <GitBranch size={14} className="text-emerald-500 flex-shrink-0" />
+                  <span className="text-sm theme-text-primary truncate">{r.name}</span>
+                </div>
+                <span className="text-xs theme-text-muted flex-shrink-0">{r.seeders ?? 0} seeder{(r.seeders ?? 0) === 1 ? '' : 's'}</span>
               </div>
-              <span className="text-xs theme-text-muted flex-shrink-0">{r.seeders ?? 0} seeder{(r.seeders ?? 0) === 1 ? '' : 's'}</span>
-            </div>
-            <p className="text-xs theme-text-muted truncate mt-0.5 pl-6">{String(r.owner || '').slice(0, 12)}…{r.description ? ` · ${r.description}` : ''}</p>
-          </button>
-        ))}
+              <p className="text-xs theme-text-muted truncate mt-0.5 pl-6">
+                {String(r.owner || '').slice(0, 12)}…{copies > 1 ? ` · ${copies} copies` : ''}{r.head_sha ? ` · HEAD ${shortHash(r.head_sha, 8)}` : ''}{r.description ? ` · ${r.description}` : ''}
+              </p>
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex-1 overflow-auto p-6">
@@ -303,10 +319,14 @@ export default function ReposPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <div className="theme-bg-secondary rounded border theme-border p-4">
                 <p className="text-xs theme-text-muted mb-1">Seeders</p>
                 <p className="text-2xl font-semibold theme-text-primary">{selectedNet.seeders ?? 0}</p>
+              </div>
+              <div className="theme-bg-secondary rounded border theme-border p-4">
+                <p className="text-xs theme-text-muted mb-1">Copies</p>
+                <p className="text-2xl font-semibold theme-text-primary">{selectedNet.copies || (Array.isArray(selectedNet.owners) ? selectedNet.owners.length : 1)}</p>
               </div>
               <div className="theme-bg-secondary rounded border theme-border p-4">
                 <p className="text-xs theme-text-muted mb-1">Owner</p>
@@ -317,6 +337,37 @@ export default function ReposPage() {
                 <p className="text-sm theme-text-primary">{Array.isArray(selectedNet.seen_on) ? selectedNet.seen_on.join(', ') : '–'}</p>
               </div>
             </div>
+
+            {(selectedNet.head_sha || selectedNet.history_id) && (
+              <div className="theme-bg-secondary rounded border theme-border mb-6">
+                <h3 className="text-sm font-semibold theme-text-primary px-4 py-3 border-b theme-border">Shared git history</h3>
+                <div className="p-4 space-y-1.5 text-xs theme-text-muted">
+                  {selectedNet.head_sha && <p>HEAD: <code className="theme-text-primary">{String(selectedNet.head_sha)}</code></p>}
+                  {selectedNet.history_id && <p>History: <code className="theme-text-primary">{shortHash(selectedNet.history_id, 16)}</code></p>}
+                  <p>Copies are grouped when they point at the same HEAD commit; without a HEAD, their branch and tag refs must match exactly.</p>
+                </div>
+              </div>
+            )}
+
+            {Array.isArray(selectedNet.clone_urls) && selectedNet.clone_urls.length > 1 && (
+              <div className="theme-bg-secondary rounded border theme-border mb-6">
+                <h3 className="text-sm font-semibold theme-text-primary px-4 py-3 border-b theme-border">Clone from a copy</h3>
+                {selectedNet.clone_urls.map((url: string) => (
+                  <div key={url} className="flex items-center justify-between gap-3 px-4 py-2.5 border-b theme-border last:border-0">
+                    <code className="text-xs theme-text-primary truncate">{url}</code>
+                    <button onClick={() => cloneFromNetwork({ ...selectedNet, clone_url: url })} disabled={cloningNet}
+                      className="flex-shrink-0 flex items-center gap-1.5 text-xs theme-bg-tertiary hover:theme-bg-hover disabled:opacity-50 theme-text-secondary rounded px-2.5 py-1">
+                      <Download size={12} /> Clone
+                    </button>
+                  </div>
+                ))}
+                {Array.isArray(selectedNet.owners) && selectedNet.owners.length > 1 && (
+                  <p className="text-xs theme-text-muted px-4 py-3 border-t theme-border">
+                    Owners: {selectedNet.owners.map((owner: string) => owner.slice(0, 12) + '…').join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
 
             {selectedNet.description && (
               <div className="theme-bg-secondary rounded border theme-border">
