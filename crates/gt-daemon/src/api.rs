@@ -35,7 +35,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Shared state for the API.
 #[allow(dead_code)]
@@ -1409,13 +1409,20 @@ async fn clone_repo(
     if let Err(s) = check_local_auth(&headers, &state.api_token) {
         return Err((s, Json(serde_json::json!({"error": "unauthorized"}))));
     }
+    info!(
+        url = req.url.trim(),
+        dest = req.dest.trim(),
+        "clone requested"
+    );
     if !clone_url_scheme_ok(&req.url) {
+        warn!(url = req.url.trim(), "clone rejected: bad scheme");
         return Err(err(
             StatusCode::UNPROCESSABLE_ENTITY,
             "url must use http, https, gitforest, or file scheme".to_string(),
         ));
     }
     let Some(name) = clone_target_name(&req.url) else {
+        warn!(url = req.url.trim(), "clone rejected: no repo name in url");
         return Err(err(
             StatusCode::UNPROCESSABLE_ENTITY,
             "could not derive a repo name from url".to_string(),
@@ -1423,6 +1430,7 @@ async fn clone_repo(
     };
     let dest = std::path::PathBuf::from(req.dest.trim());
     if !dest.is_dir() {
+        warn!(dest = %dest.display(), "clone rejected: dest is not a directory");
         return Err(err(
             StatusCode::UNPROCESSABLE_ENTITY,
             "dest must be an existing directory".to_string(),
@@ -1430,6 +1438,7 @@ async fn clone_repo(
     }
     let target = dest.join(&name);
     if target.exists() {
+        warn!(target = %target.display(), "clone rejected: target exists");
         return Err(err(
             StatusCode::CONFLICT,
             format!("{} already exists", target.display()),
@@ -1453,12 +1462,14 @@ async fn clone_repo(
     )
     .await
     .map_err(|_| {
+        warn!(url = req.url.trim(), "clone failed: timed out");
         err(
             StatusCode::GATEWAY_TIMEOUT,
             "git clone timed out".to_string(),
         )
     })?
     .map_err(|e| {
+        warn!(url = req.url.trim(), error = %e, "clone failed: could not start git");
         err(
             StatusCode::BAD_GATEWAY,
             format!("git clone failed to start: {e}"),
@@ -1467,11 +1478,13 @@ async fn clone_repo(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let tail: String = stderr.lines().rev().take(5).collect::<Vec<_>>().join("\n");
+        warn!(url = req.url.trim(), status = %output.status, tail = %tail, "clone failed: git error");
         return Err(err(
             StatusCode::BAD_GATEWAY,
             format!("git clone failed: {tail}"),
         ));
     }
+    info!(name = %name, target = %target.display(), "clone succeeded, registering repo");
     drop(state);
     {
         let mut state = state_arc.write().await;
@@ -1483,11 +1496,17 @@ async fn clone_repo(
             seeding: true,
         };
         let acl = RepoAcl::new(&state.identity, &name);
-        if !state.config.repos.iter().any(|r| r.name == name) {
+        if state.config.repos.iter().any(|r| r.name == name) {
+            warn!(name = %name, "clone registered: name already in repo list, skipping duplicate");
+        } else {
             state.config.repos.push(repo_config);
         }
         state.acls.insert(name.clone(), acl);
-        let _ = state.config.save(&state.config_path);
+        if let Err(e) = state.config.save(&state.config_path) {
+            warn!(name = %name, error = %e, "clone registered but config save failed");
+        } else {
+            info!(name = %name, "clone registered and config saved");
+        }
     }
     Ok(Json(serde_json::json!({
         "name": name,
@@ -1713,6 +1732,7 @@ async fn list_network_repos(State(state): State<Arc<RwLock<AppState>>>) -> Json<
         } else {
             status["repos"] = serde_json::json!(0);
             if let Some(error) = error {
+                warn!(peer = %peer, error = %error.chars().take(200).collect::<String>(), "network repos: bootstrap failed");
                 status["error"] = serde_json::Value::String(error.chars().take(200).collect());
             }
             per_bootstrap.push((host.unwrap_or_default(), None));
@@ -1724,10 +1744,21 @@ async fn list_network_repos(State(state): State<Arc<RwLock<AppState>>>) -> Json<
             .and_then(|v| v.as_str())
             .cmp(&b.get("ip").and_then(|v| v.as_str()))
     });
+    let merged = merge_network_repos(per_bootstrap);
+    let up = bootstraps
+        .iter()
+        .filter(|b| b.get("ok").and_then(|v| v.as_bool()).unwrap_or(false))
+        .count();
+    info!(
+        bootstraps_up = up,
+        bootstraps_total = bootstraps.len(),
+        repos = merged.len(),
+        "network repos scanned"
+    );
     Json(serde_json::json!({
         "updated": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
         "bootstraps": bootstraps,
-        "repos": merge_network_repos(per_bootstrap),
+        "repos": merged,
     }))
 }
 
@@ -2029,6 +2060,7 @@ async fn add_repo(
             .unwrap_or(false);
 
     if !is_git {
+        warn!(path = %req.path, "add repo rejected: not a git repo");
         return Err(StatusCode::BAD_REQUEST);
     }
 
@@ -2051,9 +2083,12 @@ async fn add_repo(
 
     let json = repo_to_json(&repo_config);
     let acl = RepoAcl::new(&state.identity, &repo_name);
+    info!(name = %repo_name, path = %repo_config.path.display(), "repo added");
     state.config.repos.push(repo_config);
     state.acls.insert(repo_name, acl);
-    let _ = state.config.save(&state.config_path);
+    if let Err(e) = state.config.save(&state.config_path) {
+        warn!(error = %e, "repo added but config save failed");
+    }
 
     Ok(Json(json))
 }
@@ -2071,9 +2106,13 @@ async fn remove_repo(
     state.config.repos.retain(|r| r.name != name);
     state.acls.remove(&name);
     if state.config.repos.len() < before {
-        let _ = state.config.save(&state.config_path);
+        info!(name = %name, "repo removed");
+        if let Err(e) = state.config.save(&state.config_path) {
+            warn!(name = %name, error = %e, "repo removed but config save failed");
+        }
         StatusCode::OK
     } else {
+        warn!(name = %name, "remove repo: not found");
         StatusCode::NOT_FOUND
     }
 }

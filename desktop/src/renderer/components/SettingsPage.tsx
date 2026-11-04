@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings, Power, RefreshCw, RotateCcw, FileText, ArrowUpCircle, ExternalLink } from 'lucide-react';
+import { Settings, Power, RefreshCw, RotateCcw, FileText, ArrowUpCircle, ExternalLink, Download } from 'lucide-react';
 
 export default function SettingsPage() {
   const [daemonRunning, setDaemonRunning] = useState(true);
@@ -9,6 +9,11 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [appVersion, setAppVersion] = useState('');
   const [update, setUpdate] = useState<any>(null);
+  const [checking, setChecking] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [dlProgress, setDlProgress] = useState<{ received: number; total: number } | null>(null);
+  const [installing, setInstalling] = useState(false);
+  const [dlError, setDlError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [ds, l, dd, cd] = await Promise.all([
@@ -23,13 +28,76 @@ export default function SettingsPage() {
     setConfigDir(cd);
   }, []);
 
+  const checkNow = useCallback(async () => {
+    setChecking(true);
+    setUpdateError(null);
+    try {
+      const r: any = await window.gf.checkForUpdates?.();
+      if (r?.success) {
+        console.log('[gf:update] check ok', { current: r.currentVersion, latest: r.latestVersion, hasUpdate: r.hasUpdate, asset: r.asset?.kind || null });
+        setUpdate(r);
+      } else {
+        console.error('[gf:update] check failed', r?.error);
+        setUpdateError(r?.error || 'Check failed');
+      }
+    } catch (e) {
+      console.error('[gf:update] check threw', e);
+      setUpdateError((e as Error).message);
+    }
+    setChecking(false);
+  }, []);
+
+  const downloadAndInstall = async () => {
+    const asset = update?.asset;
+    if (!asset) return;
+    setDlError(null);
+    setDlProgress({ received: 0, total: 0 });
+    console.log('[gf:update] download started', { url: asset.url, file: asset.file });
+    const unsub = window.gf.onUpdateDownloadProgress((p) => setDlProgress(p));
+    let dl: any;
+    try {
+      dl = await window.gf.downloadUpdate(asset.url, asset.file);
+    } catch (e) {
+      unsub();
+      setDlProgress(null);
+      console.error('[gf:update] download threw', e);
+      setDlError(`Download failed: ${(e as Error).message}`);
+      return;
+    }
+    unsub();
+    if (!dl?.success) {
+      setDlProgress(null);
+      console.error('[gf:update] download failed', dl?.error);
+      setDlError(dl?.error || 'Download failed');
+      return;
+    }
+    console.log('[gf:update] download ok, installing', { path: dl.path, kind: asset.kind });
+    setInstalling(true);
+    let inst: any;
+    try {
+      inst = await window.gf.installUpdate(dl.path, asset.kind);
+    } catch (e) {
+      setInstalling(false);
+      setDlProgress(null);
+      console.error('[gf:update] install threw', e);
+      setDlError(`Install failed: ${(e as Error).message}`);
+      return;
+    }
+    setInstalling(false);
+    setDlProgress(null);
+    if (!inst?.success) {
+      console.error('[gf:update] install failed', inst?.error);
+      setDlError(inst?.error || 'Install failed');
+    }
+  };
+
   useEffect(() => {
     load();
     window.gf.getAppVersion?.().then(setAppVersion);
-    window.gf.checkForUpdates?.().then((r: any) => { if (r?.success) setUpdate(r); });
+    checkNow();
     const unsub = window.gf.onDaemonStateChange?.((s) => setDaemonRunning(s.running));
     return () => { unsub?.(); };
-  }, [load]);
+  }, [load, checkNow]);
 
   const act = async (fn: () => Promise<any>) => {
     setBusy(true);
@@ -44,16 +112,49 @@ export default function SettingsPage() {
         <Settings size={20} className="text-emerald-500" /> Machine & daemon
       </h1>
 
-      {update?.hasUpdate && (
-        <button onClick={() => window.gf.openExternal(update.releaseUrl)}
-          className="w-full flex items-center justify-between theme-bg-tertiary border border-emerald-700 rounded p-3 mb-6 text-left">
-          <span className="text-sm theme-text-primary flex items-center gap-2">
-            <ArrowUpCircle size={16} className="text-emerald-500" />
-            gitforest {update.latestVersion} available (you have {update.currentVersion})
-          </span>
-          <ExternalLink size={14} className="theme-text-muted" />
-        </button>
-      )}
+      <div className="theme-bg-secondary rounded border theme-border p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold theme-text-primary flex items-center gap-2">
+            <ArrowUpCircle size={14} className="text-emerald-500" /> App updates
+          </h3>
+          <button disabled={checking || !!dlProgress || installing} onClick={checkNow}
+            className="flex items-center gap-1.5 text-xs theme-bg-tertiary hover:theme-bg-hover disabled:opacity-40 theme-text-secondary rounded px-3 py-1.5">
+            <RefreshCw size={12} /> {checking ? 'Checking…' : 'Check for updates'}
+          </button>
+        </div>
+        <div className="space-y-1.5 text-xs theme-text-muted">
+          <p>Installed: <code>v{appVersion || '?'}</code>
+            {update?.success && update.hasUpdate && <> · Latest: <code>v{update.latestVersion}</code></>}</p>
+          {updateError && <p className="text-red-500">Check failed: {updateError}</p>}
+          {update?.success && !update.hasUpdate && <p className="text-emerald-500">You're up to date.</p>}
+          {update?.devMode && <p>Dev mode: in-app install is disabled.</p>}
+        </div>
+        {update?.success && update.hasUpdate && !update.devMode && update.asset && !installing && (
+          <button disabled={!!dlProgress} onClick={downloadAndInstall}
+            className="mt-4 flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded px-3 py-1.5">
+            <Download size={12} /> {dlProgress ? 'Downloading…' : `Download & install v${update.latestVersion}`}
+          </button>
+        )}
+        {update?.success && update.hasUpdate && !update.asset && (
+          <button onClick={() => window.gf.openExternal(update.releaseUrl)}
+            className="mt-4 flex items-center gap-1.5 text-xs theme-bg-tertiary hover:theme-bg-hover theme-text-secondary rounded px-3 py-1.5">
+            View release <ExternalLink size={12} />
+          </button>
+        )}
+        {dlProgress && (
+          <div className="mt-3">
+            <div className="h-2 theme-bg-tertiary rounded overflow-hidden">
+              <div className="h-full bg-emerald-500 transition-all"
+                style={{ width: `${dlProgress.total ? Math.round(100 * dlProgress.received / dlProgress.total) : 0}%` }} />
+            </div>
+            <p className="text-xs theme-text-muted mt-1">
+              {(dlProgress.received / 1048576).toFixed(1)} / {(dlProgress.total / 1048576).toFixed(1)} MB
+            </p>
+          </div>
+        )}
+        {installing && <p className="text-xs theme-text-muted mt-3">Installing… the app will relaunch.</p>}
+        {dlError && <p className="text-xs text-red-500 mt-3">{dlError}</p>}
+      </div>
 
       <div className="theme-bg-secondary rounded border theme-border p-6 mb-6">
         <div className="flex items-center justify-between mb-4">

@@ -77,11 +77,22 @@ export default function NetworkPage() {
       window.gf.api('/api/transfers'),
     ]);
     if (s.ok) setStatus(s.data);
+    else console.error('[gf:net] /api/status failed', { status: s.status, error: s.error });
     if (p.ok) {
-      setPeers(Array.isArray(p.data) ? p.data : p.data?.peers || []);
+      const list = Array.isArray(p.data) ? p.data : p.data?.peers || [];
+      setPeers(list);
       setConnected(typeof p.data?.connected === 'number' ? p.data.connected : null);
+      if (typeof p.data?.connected === 'number' && p.data.connected === 0) {
+        console.warn('[gf:net] connected=0', {
+          bootstraps: Array.isArray(p.data?.bootstrap_peers) ? p.data.bootstrap_peers.length : '?',
+          discovered: Array.isArray(p.data?.discovered_peers) ? p.data.discovered_peers.length : '?',
+        });
+      }
+    } else {
+      console.error('[gf:net] /api/peers failed', { status: p.status, error: p.error });
     }
     if (t.ok) setTransfers(Array.isArray(t.data) ? t.data : t.data?.transfers || []);
+    else console.error('[gf:net] /api/transfers failed', { status: t.status, error: t.error });
   }, []);
 
   useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, [load]);

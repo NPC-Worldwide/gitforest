@@ -27,25 +27,45 @@ export default function ReposPage() {
   const [cloneNetErr, setCloneNetErr] = useState<string | null>(null);
 
   const cloneFromNetwork = async (repo: any) => {
-    const pick = await window.gf.pickDirectory(`Choose where to clone ${repo.name}`);
-    if (pick.canceled || !pick.filePaths?.[0]) return;
-    setCloningNet(true);
-    setCloneNetErr(null);
-    const res = await window.gf.api('/api/repos/clone', {
-      method: 'POST',
-      body: { url: repo.clone_url, dest: pick.filePaths[0], description: repo.description || undefined },
-    });
-    setCloningNet(false);
-    if (!res.ok) {
-      setCloneNetErr(String(res.error || res.data?.error || 'Clone failed'));
-      return;
+    console.log('[gf:repos] network clone started', { name: repo.name, owner: repo.owner, url: repo.clone_url });
+    try {
+      const pick = await window.gf.pickDirectory(`Choose where to clone ${repo.name}`);
+      if (pick.canceled || !pick.filePaths?.[0]) {
+        console.log('[gf:repos] network clone canceled at folder picker');
+        return;
+      }
+      console.log('[gf:repos] network clone dest picked', { dest: pick.filePaths[0] });
+      setCloningNet(true);
+      setCloneNetErr(null);
+      const res = await window.gf.api('/api/repos/clone', {
+        method: 'POST',
+        body: { url: repo.clone_url, dest: pick.filePaths[0], description: repo.description || undefined },
+      });
+      setCloningNet(false);
+      if (!res.ok) {
+        const msg = String(res.error || (res.data as any)?.error || `Clone failed (HTTP ${res.status})`);
+        console.error('[gf:repos] network clone failed', { status: res.status, error: res.error, data: res.data });
+        setCloneNetErr(msg);
+        return;
+      }
+      console.log('[gf:repos] network clone ok', res.data);
+      const name = (res.data as any)?.name || repo.name;
+      setSelectedNet(null);
+      setTab('hosted');
+      const list = await load();
+      const added = list.find((r) => r.name === name);
+      if (added) {
+        console.log('[gf:repos] network clone registered, opening', { name });
+        openRepo(added);
+      } else {
+        console.error('[gf:repos] network clone missing from hosted list after reload', { name, hosted: list.map((r) => r.name) });
+        setCloneNetErr(`Cloned but ${name} is not in the hosted list — check daemon log in Settings.`);
+      }
+    } catch (e) {
+      setCloningNet(false);
+      console.error('[gf:repos] network clone threw', e);
+      setCloneNetErr(`Clone failed: ${(e as Error).message}`);
     }
-    const name = res.data?.name || repo.name;
-    setSelectedNet(null);
-    setTab('hosted');
-    const list = await load();
-    const added = list.find((r) => r.name === name);
-    if (added) openRepo(added);
   };
 
   const load = useCallback(async () => {
@@ -64,8 +84,17 @@ export default function ReposPage() {
     const n = await window.gf.api('/api/network/repos');
     setNetLoading(false);
     if (n.ok) {
-      setNetRepos(Array.isArray(n.data?.repos) ? n.data.repos : []);
+      const repos = Array.isArray(n.data?.repos) ? n.data.repos : [];
+      console.log('[gf:repos] network scan ok', {
+        repos: repos.length,
+        bootstraps: Array.isArray(n.data?.bootstraps)
+          ? n.data.bootstraps.map((b: any) => `${b.ip}:${b.ok ? 'up' : 'down'}`).join(',')
+          : '?',
+      });
+      setNetRepos(repos);
       setNetMeta(n.data || null);
+    } else {
+      console.error('[gf:repos] network scan failed', { status: n.status, error: n.error });
     }
   }, []);
 
@@ -90,12 +119,22 @@ export default function ReposPage() {
   };
 
   const addRepo = async () => {
-    const pick = await window.gf.pickDirectory();
-    if (pick.canceled || !pick.filePaths?.[0]) return;
-    const p = pick.filePaths[0];
-    const name = p.split('/').pop() || 'repo';
-    const res = await window.gf.api('/api/repos', { method: 'POST', body: { path: p, name } });
-    if (res.ok) load();
+    try {
+      const pick = await window.gf.pickDirectory();
+      if (pick.canceled || !pick.filePaths?.[0]) return;
+      const p = pick.filePaths[0];
+      const name = p.split('/').pop() || 'repo';
+      console.log('[gf:repos] add repo', { path: p, name });
+      const res = await window.gf.api('/api/repos', { method: 'POST', body: { path: p, name } });
+      if (res.ok) {
+        console.log('[gf:repos] add repo ok', res.data);
+        load();
+      } else {
+        console.error('[gf:repos] add repo failed', { status: res.status, error: res.error, data: res.data });
+      }
+    } catch (e) {
+      console.error('[gf:repos] add repo threw', e);
+    }
   };
 
   const pickCloneDest = async () => {
@@ -110,10 +149,20 @@ export default function ReposPage() {
     }
     setBusy(true);
     setCloneMsg(null);
-    const res = await window.gf.api('/api/repos/clone', { method: 'POST', body: { url: cloneInputUrl.trim(), dest: cloneDest.trim() } });
-    setBusy(false);
-    if (!res.ok) {
-      setCloneMsg(res.error || res.data?.error || 'Clone failed');
+    console.log('[gf:repos] manual clone started', { url: cloneInputUrl.trim(), dest: cloneDest.trim() });
+    try {
+      const res = await window.gf.api('/api/repos/clone', { method: 'POST', body: { url: cloneInputUrl.trim(), dest: cloneDest.trim() } });
+      setBusy(false);
+      if (!res.ok) {
+        console.error('[gf:repos] manual clone failed', { status: res.status, error: res.error, data: res.data });
+        setCloneMsg(String(res.error || (res.data as any)?.error || `Clone failed (HTTP ${res.status})`));
+        return;
+      }
+      console.log('[gf:repos] manual clone ok', res.data);
+    } catch (e) {
+      setBusy(false);
+      console.error('[gf:repos] manual clone threw', e);
+      setCloneMsg(`Clone failed: ${(e as Error).message}`);
       return;
     }
     setShowClone(false);
@@ -126,7 +175,9 @@ export default function ReposPage() {
 
   const removeRepo = async (name: string) => {
     if (!confirm(`Stop hosting "${name}"? (repo files stay on disk)`)) return;
-    await window.gf.api(`/api/repos/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    console.log('[gf:repos] stop hosting', { name });
+    const res = await window.gf.api(`/api/repos/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    if (!res.ok) console.error('[gf:repos] stop hosting failed', { name, status: res.status, error: res.error });
     setSelected(null);
     load();
   };

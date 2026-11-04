@@ -24,6 +24,9 @@ export interface IGitforestAPI {
   onWindowStateChange: (cb: (s: { isMaximized: boolean }) => void) => () => void;
   checkForUpdates: () => Promise<any>;
   getAppVersion: () => Promise<string>;
+  downloadUpdate: (url: string, file: string) => Promise<any>;
+  installUpdate: (filePath: string, kind: string) => Promise<any>;
+  onUpdateDownloadProgress: (cb: (p: { received: number; total: number }) => void) => () => void;
 }
 
 contextBridge.exposeInMainWorld('gf', {
@@ -62,6 +65,13 @@ contextBridge.exposeInMainWorld('gf', {
   },
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  downloadUpdate: (url: string, file: string) => ipcRenderer.invoke('download-update', url, file),
+  installUpdate: (filePath: string, kind: string) => ipcRenderer.invoke('install-update', filePath, kind),
+  onUpdateDownloadProgress: (cb: any) => {
+    const h = (_e: IpcRendererEvent, p: any) => cb(p);
+    ipcRenderer.on('update-download-progress', h);
+    return () => ipcRenderer.removeListener('update-download-progress', h);
+  },
 } as IGitforestAPI);
 
 declare global {

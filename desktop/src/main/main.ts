@@ -117,6 +117,7 @@ function spawnDaemon(): boolean {
     } catch {}
   }
 
+  console.log(`[gf:main] spawning daemon: ${gitforest} daemon (log: ${logPath})`);
   daemonProcess = spawn(gitforest, ['daemon'], {
     stdio: ['ignore', logFd, logFd],
     detached: process.platform !== 'win32',
@@ -214,8 +215,10 @@ export async function apiFetch(route: string, opts: ProxyOptions = {}): Promise<
     let data: unknown;
     if (ct.includes('json')) data = await res.json();
     else data = await res.text();
+    if (!res.ok) console.error(`[gf:main] api ${opts.method || 'GET'} ${route} -> HTTP ${res.status}`);
     return { ok: res.ok, status: res.status, data };
   } catch (e) {
+    console.error(`[gf:main] api ${opts.method || 'GET'} ${route} transport error: ${(e as Error).message}`);
     return { ok: false, status: 0, error: (e as Error).message };
   }
 }
@@ -374,16 +377,129 @@ function cmpVer(a: string, b: string): number {
 
 ipcMain.handle('get-app-version', () => APP_VERSION);
 
+const MANIFEST_URL = 'https://storage.googleapis.com/gitforest-executables/manifest.json';
+
+function updateAssetForPlatform(downloads: any): { url: string; file: string; kind: string } | null {
+  if (!downloads) return null;
+  if (process.platform === 'darwin' && downloads['desktop-macos-dmg']) {
+    return { url: downloads['desktop-macos-dmg'], file: 'gitforest-desktop-macos-arm64.dmg', kind: 'dmg' };
+  }
+  if (process.platform === 'linux') {
+    if (process.env.APPIMAGE && downloads['desktop-linux-appimage']) {
+      return { url: downloads['desktop-linux-appimage'], file: 'gitforest-desktop-linux-x64.AppImage', kind: 'appimage' };
+    }
+    if (downloads['desktop-linux-deb']) {
+      return { url: downloads['desktop-linux-deb'], file: 'gitforest-desktop-linux-x64.deb', kind: 'deb' };
+    }
+  }
+  return null;
+}
+
+function runCmd(cmd: string, args: string[], timeoutMs = 180000): Promise<{ code: number; stderr: string }> {
+  return new Promise((resolve) => {
+    const p = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stderr = '';
+    p.stderr?.on('data', (d) => { stderr += d.toString(); });
+    const t = setTimeout(() => { try { p.kill('SIGKILL'); } catch {} }, timeoutMs);
+    p.on('error', () => { clearTimeout(t); resolve({ code: -1, stderr }); });
+    p.on('close', (code) => { clearTimeout(t); resolve({ code: code ?? -1, stderr }); });
+  });
+}
+
 ipcMain.handle('check-for-updates', async () => {
   try {
-    const res = await fetch('https://gitforest.net/api/desktop/latest');
+    const res = await fetch(MANIFEST_URL, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const rel: any = await res.json();
-    const latest = (rel.version || '0.0.0') as string;
+    const manifest: any = await res.json();
+    const latest = (manifest.version || '0.0.0') as string;
     const hasUpdate = cmpVer(latest, APP_VERSION) > 0;
-    const url = rel.url || 'https://gitforest.net';
-    return { success: true, currentVersion: APP_VERSION, latestVersion: latest.replace(/^v/, ''), hasUpdate, releaseUrl: url };
+    console.log(`[gf:main] update check: installed=${APP_VERSION} latest=${latest} hasUpdate=${hasUpdate}`);
+    return {
+      success: true,
+      currentVersion: APP_VERSION,
+      latestVersion: latest.replace(/^v/, ''),
+      hasUpdate,
+      releaseUrl: 'https://gitforest.net/downloads.html',
+      asset: updateAssetForPlatform(manifest.downloads),
+      devMode: IS_DEV,
+    };
   } catch (e) {
     return { success: false, error: (e as Error).message, currentVersion: APP_VERSION };
+  }
+});
+
+ipcMain.handle('download-update', async (_e, url: string, file: string) => {
+  try {
+    const safe = path.basename(file).replace(/[^A-Za-z0-9._-]/g, '_');
+    if (!url.startsWith('https://storage.googleapis.com/gitforest-executables/')) {
+      throw new Error('refusing to download from an unexpected host');
+    }
+    console.log(`[gf:main] update download started: ${url}`);
+    const res = await fetch(url, { signal: AbortSignal.timeout(600000) });
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+    const total = Number(res.headers.get('content-length') || 0);
+    const dest = path.join(os.tmpdir(), safe);
+    const out = fs.createWriteStream(dest);
+    let received = 0;
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.length;
+      if (!out.write(value)) await new Promise<void>((r) => out.once('drain', () => r()));
+      mainWindow?.webContents.send('update-download-progress', { received, total });
+    }
+    await new Promise<void>((resolve, reject) => {
+      out.once('error', reject);
+      out.once('finish', () => resolve());
+      out.end();
+    });
+    console.log(`[gf:main] update download complete: ${dest} (${received} bytes)`);
+    return { success: true, path: dest };
+  } catch (e) {
+    console.error(`[gf:main] update download failed: ${(e as Error).message}`);
+    return { success: false, error: (e as Error).message };
+  }
+});
+
+ipcMain.handle('install-update', async (_e, filePath: string, kind: string) => {
+  try {
+    if (IS_DEV) throw new Error('in-app update is disabled in dev mode');
+    if (!filePath.startsWith(os.tmpdir() + path.sep)) throw new Error('unexpected update path');
+    console.log(`[gf:main] update install started: kind=${kind} path=${filePath}`);
+    if (process.platform === 'linux' && kind === 'appimage' && process.env.APPIMAGE) {
+      fs.copyFileSync(filePath, process.env.APPIMAGE);
+      fs.chmodSync(process.env.APPIMAGE, 0o755);
+      console.log(`[gf:main] update install: AppImage replaced at ${process.env.APPIMAGE}`);
+    } else if (process.platform === 'linux' && kind === 'deb') {
+      const r = await runCmd('pkexec', ['dpkg', '-i', filePath]);
+      if (r.code !== 0) throw new Error(r.stderr.trim().split('\n').pop() || 'package install failed');
+      console.log('[gf:main] update install: deb installed');
+    } else if (process.platform === 'darwin' && kind === 'dmg') {
+      const mnt = path.join(os.tmpdir(), 'gf-update-mnt');
+      fs.rmSync(mnt, { recursive: true, force: true });
+      fs.mkdirSync(mnt, { recursive: true });
+      const attached = await runCmd('hdiutil', ['attach', '-nobrowse', '-mountpoint', mnt, filePath]);
+      if (attached.code !== 0) throw new Error('could not mount update image');
+      try {
+        const src = path.join(mnt, 'gitforest.app');
+        if (!fs.existsSync(src)) throw new Error('update image has no gitforest.app');
+        fs.rmSync('/Applications/gitforest.app', { recursive: true, force: true });
+        fs.cpSync(src, '/Applications/gitforest.app', { recursive: true });
+      } finally {
+        await runCmd('hdiutil', ['detach', mnt]);
+      }
+    } else {
+      throw new Error('unsupported platform for in-app update');
+    }
+    stopDaemon();
+    try { fs.rmSync(filePath); } catch {}
+    console.log('[gf:main] update install complete, relaunching');
+    app.relaunch();
+    app.exit(0);
+    return { success: true };
+  } catch (e) {
+    console.error(`[gf:main] update install failed: ${(e as Error).message}`);
+    return { success: false, error: (e as Error).message };
   }
 });
