@@ -1,6 +1,6 @@
 {
   "name": "gitforest-desktop",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "gitforest desktop - P2P git hosting client",
   "author": "gitforest",
   "license": "AGPL-3.0-or-later",
@@ -65,6 +65,7 @@
         "filter": ["**/*"]
       }
     ],
+    "afterSign": "build/after-sign.cjs",
     "mac": {
       "icon": "gitforest.png",
       "target": [

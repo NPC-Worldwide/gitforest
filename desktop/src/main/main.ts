@@ -106,6 +106,17 @@ function spawnDaemon(): boolean {
   const logFd = fs.openSync(logPath, 'a');
   const env = { ...process.env, RUST_LOG: process.env.RUST_LOG || 'info' };
 
+  if (process.platform === 'darwin') {
+    try {
+      const dir = path.dirname(gitforest);
+      for (const f of fs.readdirSync(dir)) {
+        try {
+          execFileSync('/usr/bin/xattr', ['-d', 'com.apple.quarantine', path.join(dir, f)], { stdio: 'ignore' });
+        } catch {}
+      }
+    } catch {}
+  }
+
   daemonProcess = spawn(gitforest, ['daemon'], {
     stdio: ['ignore', logFd, logFd],
     detached: process.platform !== 'win32',
