@@ -688,11 +688,21 @@ mod tests {
             .unwrap()
             .display()
             .to_string();
+        #[cfg(unix)]
         assert!(
             result.stdout_tail.contains(&format!("path={exe_dir}:")),
             "{}",
             result.stdout_tail
         );
+        #[cfg(windows)]
+        {
+            let msys = exe_dir.replace('\\', "/");
+            let msys = match msys.split_once(':') {
+                Some((drive, rest)) => format!("/{lower}{rest}", lower = drive.to_lowercase()),
+                None => msys,
+            };
+            assert!(result.stdout_tail.contains(&msys), "{}", result.stdout_tail);
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

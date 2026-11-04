@@ -112,19 +112,32 @@ mod tests {
     async fn canned_probe_script_yields_its_count() {
         let dir = std::env::temp_dir().join(format!("gf_gpu_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let script = dir.join("nvidia-smi");
-        std::fs::write(
-            &script,
-            "#!/bin/sh\necho 'GPU 0: Fake A100 (UUID: GPU-a)'\necho 'GPU 1: Fake A100 (UUID: GPU-b)'\n",
-        )
-        .unwrap();
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(&script).unwrap().permissions();
-            perms.set_mode(0o755);
-            std::fs::set_permissions(&script, perms).unwrap();
-        }
+        let script = {
+            let script = dir.join("nvidia-smi");
+            std::fs::write(
+                &script,
+                "#!/bin/sh\necho 'GPU 0: Fake A100 (UUID: GPU-a)'\necho 'GPU 1: Fake A100 (UUID: GPU-b)'\n",
+            )
+            .unwrap();
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = std::fs::metadata(&script).unwrap().permissions();
+                perms.set_mode(0o755);
+                std::fs::set_permissions(&script, perms).unwrap();
+            }
+            script
+        };
+        #[cfg(windows)]
+        let script = {
+            let script = dir.join("nvidia-smi.bat");
+            std::fs::write(
+                &script,
+                "@echo off\necho GPU 0: Fake A100 (UUID: GPU-a)\necho GPU 1: Fake A100 (UUID: GPU-b)\n",
+            )
+            .unwrap();
+            script
+        };
         let found = detect_with(script.to_str().unwrap()).await;
         assert_eq!(found, 2);
         let _ = std::fs::remove_dir_all(&dir);

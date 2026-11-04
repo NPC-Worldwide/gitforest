@@ -754,7 +754,16 @@ pub fn image_allowed(image: &str, allowed: &[String]) -> bool {
 
 pub(crate) fn sanitize_artifact_path(pattern: &str) -> Option<std::path::PathBuf> {
     let path = std::path::Path::new(pattern);
-    if path.is_absolute() {
+    if path.is_absolute() || pattern.starts_with('/') {
+        return None;
+    }
+    if cfg!(windows)
+        && (pattern.starts_with('\\')
+            || matches!(
+                path.components().next(),
+                Some(std::path::Component::Prefix(_))
+            ))
+    {
         return None;
     }
     if path
@@ -1364,6 +1373,31 @@ const GF_RECORD: &str = "GF_RC=$?\nif [ $GF_RC -ne 0 ]; then\nif [ \"$GF_FAILED\
 mod tests {
     use super::*;
 
+    async fn docker_can_run(runner: &JobRunner, image: &str) -> bool {
+        if !runner.check_docker().await {
+            return false;
+        }
+        match runner.docker.info().await {
+            Ok(info) if info.os_type.as_deref() == Some("linux") => {}
+            Ok(info) => {
+                eprintln!(
+                    "skipping docker test: daemon os_type is {:?}, need linux",
+                    info.os_type
+                );
+                return false;
+            }
+            Err(_) => return false,
+        }
+        if pull_docker_image(&runner.docker, image, None)
+            .await
+            .is_err()
+        {
+            eprintln!("skipping docker test: cannot pull {image}");
+            return false;
+        }
+        true
+    }
+
     #[test]
     fn test_volume_source_rejects_host_paths() {
         for bad in [
@@ -1815,6 +1849,12 @@ mod tests {
         assert!(sanitize_artifact_path("/etc/passwd").is_none());
         assert!(sanitize_artifact_path("../escape").is_none());
         assert!(sanitize_artifact_path("a/../../escape").is_none());
+        #[cfg(windows)]
+        {
+            assert!(sanitize_artifact_path("C:\\Windows\\Temp\\x").is_none());
+            assert!(sanitize_artifact_path("\\abs\\path").is_none());
+            assert!(sanitize_artifact_path("C:relative").is_none());
+        }
     }
 
     #[test]
@@ -1904,7 +1944,7 @@ mod tests {
             Ok(r) => r,
             Err(_) => return,
         };
-        if !runner.check_docker().await {
+        if !docker_can_run(&runner, "alpine:3").await {
             return;
         }
         let submitter = Identity::generate();
@@ -1958,7 +1998,7 @@ mod tests {
             Ok(r) => r,
             Err(_) => return,
         };
-        if !runner.check_docker().await {
+        if !docker_can_run(&runner, "alpine:3").await {
             return;
         }
         let submitter = Identity::generate();
@@ -2006,7 +2046,7 @@ mod tests {
             Ok(r) => r,
             Err(_) => return,
         };
-        if !runner.check_docker().await {
+        if !docker_can_run(&runner, "nginx:alpine").await {
             return;
         }
         let services = vec![crate::job::JobService {
@@ -2051,7 +2091,7 @@ mod tests {
             Ok(r) => r,
             Err(_) => return,
         };
-        if !runner.check_docker().await {
+        if !docker_can_run(&runner, "alpine:3").await {
             return;
         }
         let volumes_before: std::collections::HashSet<String> = runner
@@ -2158,7 +2198,7 @@ mod tests {
             Ok(r) => r,
             Err(_) => return,
         };
-        if !runner.check_docker().await {
+        if !docker_can_run(&runner, "alpine:3").await {
             return;
         }
         let submitter = Identity::generate();

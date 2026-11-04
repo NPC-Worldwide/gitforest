@@ -475,17 +475,25 @@ mod tests {
         assert!(script.contains("exit 1"), "{script}");
     }
 
-    fn stub_backend(dir: &Path, body: &str) -> PathBuf {
+    #[cfg(unix)]
+    fn stub_backend(dir: &Path, unix_body: &str, _windows_body: &str) -> PathBuf {
         let path = dir.join("fake-llama");
-        let script = format!("#!/bin/sh\n{body}\n");
+        let script = format!("#!/bin/sh\n{unix_body}\n");
         std::fs::write(&path, script).unwrap();
-        #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let mut perms = std::fs::metadata(&path).unwrap().permissions();
             perms.set_mode(0o755);
             std::fs::set_permissions(&path, perms).unwrap();
         }
+        path
+    }
+
+    #[cfg(windows)]
+    fn stub_backend(dir: &Path, _unix_body: &str, windows_body: &str) -> PathBuf {
+        let path = dir.join("fake-llama.bat");
+        let script = format!("@echo off\n{windows_body}\n");
+        std::fs::write(&path, script).unwrap();
         path
     }
 
@@ -506,7 +514,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let weights = dir.join("tiny.gguf");
         std::fs::write(&weights, b"GGUFfake").unwrap();
-        let backend = stub_backend(&dir, "echo \"canned from $4\"");
+        let backend = stub_backend(&dir, "echo \"canned from $4\"", "echo canned from %4");
         let outcome = run_inference(
             backend.to_str().unwrap(),
             &weights,
@@ -528,7 +536,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let weights = dir.join("tiny.gguf");
         std::fs::write(&weights, b"GGUFfake").unwrap();
-        let backend = stub_backend(&dir, "echo 'boom' >&2; exit 3");
+        let backend = stub_backend(&dir, "echo 'boom' >&2; exit 3", "echo boom 1>&2\nexit /b 3");
         let err = run_inference(
             backend.to_str().unwrap(),
             &weights,
@@ -547,7 +555,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let weights = dir.join("tiny.gguf");
         std::fs::write(&weights, b"GGUFfake").unwrap();
-        let backend = stub_backend(&dir, "sleep 30");
+        let backend = stub_backend(&dir, "sleep 30", "ping -n 31 127.0.0.1 >nul");
         let mut request = stub_request("hello");
         request.timeout_secs = 1;
         let err = run_inference(backend.to_str().unwrap(), &weights, &request, &dir)
@@ -580,7 +588,11 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let weights = dir.join("tiny.gguf");
         std::fs::write(&weights, b"GGUFfake").unwrap();
-        let backend = stub_backend(&dir, "printf 'one\\n'; sleep 2; printf 'two\\n'");
+        let backend = stub_backend(
+            &dir,
+            "printf 'one\\n'; sleep 2; printf 'two\\n'",
+            "echo one\nping -n 4 127.0.0.1 >nul\necho two",
+        );
         let started = std::time::Instant::now();
         let mut rx = run_inference_stream(
             backend.to_str().unwrap(),
@@ -607,7 +619,10 @@ mod tests {
                 }
             }
         }
+        #[cfg(unix)]
         assert_eq!(text, "one\ntwo\n");
+        #[cfg(windows)]
+        assert_eq!(text, "one\r\ntwo\r\n");
         let first_latency = first_chunk_at.expect("no chunks streamed") - started;
         assert!(
             first_latency < std::time::Duration::from_millis(1500),
@@ -632,7 +647,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let weights = dir.join("tiny.gguf");
         std::fs::write(&weights, b"GGUFfake").unwrap();
-        let backend = stub_backend(&dir, "echo 'boom' >&2; exit 3");
+        let backend = stub_backend(&dir, "echo 'boom' >&2; exit 3", "echo boom 1>&2\nexit /b 3");
         let mut rx = run_inference_stream(
             backend.to_str().unwrap(),
             &weights,
@@ -658,7 +673,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let weights = dir.join("tiny.gguf");
         std::fs::write(&weights, b"GGUFfake").unwrap();
-        let backend = stub_backend(&dir, "sleep 30");
+        let backend = stub_backend(&dir, "sleep 30", "ping -n 31 127.0.0.1 >nul");
         let mut request = stub_request("hello");
         request.timeout_secs = 1;
         let mut rx = run_inference_stream(backend.to_str().unwrap(), &weights, &request, &dir)
@@ -680,7 +695,11 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let weights = dir.join("tiny.gguf");
         std::fs::write(&weights, b"GGUFfake").unwrap();
-        let backend = stub_backend(&dir, "head -c 300000 /dev/zero | tr '\\0' 'x'");
+        let backend = stub_backend(
+            &dir,
+            "head -c 300000 /dev/zero | tr '\\0' 'x'",
+            "powershell -NoProfile -Command \"[Console]::Out.Write('x' * 300000)\"",
+        );
         let mut rx = run_inference_stream(
             backend.to_str().unwrap(),
             &weights,
