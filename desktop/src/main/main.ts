@@ -605,17 +605,18 @@ ipcMain.handle('get-app-version', () => APP_VERSION);
 
 const MANIFEST_URL = 'https://storage.googleapis.com/gitforest-executables/manifest.json';
 
-function updateAssetForPlatform(downloads: any): { url: string; file: string; kind: string } | null {
+function updateAssetForPlatform(downloads: any, version: string): { url: string; file: string; kind: string } | null {
   if (!downloads) return null;
+  const v = String(version || '').replace(/^v/, '');
   if (process.platform === 'darwin' && downloads['desktop-macos-dmg']) {
-    return { url: downloads['desktop-macos-dmg'], file: 'gitforest-desktop-macos-arm64.dmg', kind: 'dmg' };
+    return { url: downloads['desktop-macos-dmg'], file: `gitforest-${v}-arm64.dmg`, kind: 'dmg' };
   }
   if (process.platform === 'linux') {
     if (process.env.APPIMAGE && downloads['desktop-linux-appimage']) {
-      return { url: downloads['desktop-linux-appimage'], file: 'gitforest-desktop-linux-x64.AppImage', kind: 'appimage' };
+      return { url: downloads['desktop-linux-appimage'], file: `gitforest-${v}.AppImage`, kind: 'appimage' };
     }
     if (downloads['desktop-linux-deb']) {
-      return { url: downloads['desktop-linux-deb'], file: 'gitforest-desktop-linux-x64.deb', kind: 'deb' };
+      return { url: downloads['desktop-linux-deb'], file: `gitforest-desktop_${v}_amd64.deb`, kind: 'deb' };
     }
   }
   return null;
@@ -646,7 +647,7 @@ ipcMain.handle('check-for-updates', async () => {
       latestVersion: latest.replace(/^v/, ''),
       hasUpdate,
       releaseUrl: 'https://gitforest.net/downloads.html',
-      asset: updateAssetForPlatform(manifest.downloads),
+      asset: updateAssetForPlatform(manifest.downloads, latest),
       devMode: IS_DEV,
     };
   } catch (e) {

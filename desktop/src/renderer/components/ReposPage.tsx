@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GitBranch, Plus, RefreshCw, Copy, CheckCircle2, FolderOpen, Trash2, GitPullRequest, FileDiff, Check, X, Download } from 'lucide-react';
+import RepoFiles from './RepoFiles';
 
 interface Repo { name: string; path: string; description?: string; seeding?: boolean }
 
@@ -338,6 +339,8 @@ export default function ReposPage() {
               </div>
             </div>
 
+            <RepoFiles scope="network" repoName={selectedNet.name} repoKey={networkRepoKey(selectedNet)} owner={selectedNet.owner} headSha={selectedNet.head_sha} />
+
             {(selectedNet.head_sha || selectedNet.history_id) && (
               <div className="theme-bg-secondary rounded border theme-border mb-6">
                 <h3 className="text-sm font-semibold theme-text-primary px-4 py-3 border-b theme-border">Shared git history</h3>
@@ -409,6 +412,8 @@ export default function ReposPage() {
                 <p className="text-2xl font-semibold theme-text-primary">{mrs.length}</p>
               </div>
             </div>
+
+            <RepoFiles scope="hosted" repoName={selected.name} repoKey={`hosted:${selected.name}`} />
 
             {mrs.length > 0 && (
               <div className="theme-bg-secondary rounded border theme-border mb-6">

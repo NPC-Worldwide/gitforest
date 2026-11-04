@@ -477,6 +477,8 @@ pub async fn start_api(
         .route("/api/repos/{name}/refs", get(get_repo_refs))
         .route("/api/repos/{name}/branches", get(get_repo_branches))
         .route("/api/repos/{name}/log", get(get_repo_log))
+        .route("/api/repos/{name}/tree", get(get_repo_tree))
+        .route("/api/repos/{name}/file", get(get_repo_file))
         // Network
         .route("/api/status", get(get_status))
         .route("/api/daemon/shutdown", post(shutdown_daemon))
@@ -485,6 +487,8 @@ pub async fn start_api(
         .route("/api/peers", get(get_peers))
         .route("/api/peers/exchange", get(peer_exchange))
         .route("/api/network/repos", get(list_network_repos))
+        .route("/api/network/repos/{name}/tree", get(get_network_repo_tree))
+        .route("/api/network/repos/{name}/file", get(get_network_repo_file))
         // Collaboration
         .route(
             "/api/repos/{name}/patches",
@@ -2474,6 +2478,569 @@ async fn remove_repo(
         warn!(name = %name, "remove repo: not found");
         StatusCode::NOT_FOUND
     }
+}
+
+const REPO_FILE_PREVIEW_LIMIT: usize = 512 * 1024;
+const REPO_FILE_READ_LIMIT: u64 = 2 * 1024 * 1024;
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct RepoBrowseQuery {
+    #[serde(rename = "ref")]
+    ref_name: Option<String>,
+    path: Option<String>,
+    owner: Option<String>,
+    head_sha: Option<String>,
+}
+
+fn repo_browse_allowed(local_auth: bool, seeding: bool) -> bool {
+    local_auth || seeding
+}
+
+fn validate_repo_ref(value: &str) -> Result<&str, StatusCode> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.len() > 255
+        || value.starts_with('-')
+        || value.starts_with('/')
+        || value.ends_with('/')
+        || value.ends_with(".lock")
+        || value.contains("..")
+        || value.contains("//")
+        || value.contains("@{")
+        || value
+            .chars()
+            .any(|c| c.is_control() || c.is_whitespace() || "\\:~^?*[]".contains(c))
+        || value.split('/').any(|part| part.is_empty() || part == ".")
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    Ok(value)
+}
+
+fn validate_repo_browse_path(value: &str) -> Result<&str, StatusCode> {
+    let value = value.trim();
+    if value.len() > 1024
+        || value.starts_with('/')
+        || value.contains('\\')
+        || value.chars().any(|c| c.is_control())
+        || (!value.is_empty()
+            && value
+                .split('/')
+                .any(|part| part.is_empty() || part == "." || part == ".."))
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    Ok(value)
+}
+
+fn browse_ref(query: &RepoBrowseQuery) -> Result<String, StatusCode> {
+    let value = query
+        .ref_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("HEAD");
+    Ok(validate_repo_ref(value)?.to_string())
+}
+
+fn browse_path(query: &RepoBrowseQuery) -> Result<String, StatusCode> {
+    Ok(validate_repo_browse_path(query.path.as_deref().unwrap_or(""))?.to_string())
+}
+
+fn git_bytes(repo_path: &std::path::Path, args: &[&str]) -> Result<Vec<u8>, StatusCode> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !output.status.success() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(output.stdout)
+}
+
+fn resolve_repo_commit(repo_path: &std::path::Path, ref_name: &str) -> Result<String, StatusCode> {
+    let validated = validate_repo_ref(ref_name)?;
+    let spec = format!("{validated}^{{commit}}");
+    let output = git_bytes(repo_path, &["rev-parse", "--verify", "--quiet", &spec])?;
+    let commit = String::from_utf8_lossy(&output).trim().to_string();
+    if commit.is_empty() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(commit)
+}
+
+fn repo_tree(
+    repo_path: &std::path::Path,
+    ref_name: &str,
+    dir: &str,
+) -> Result<serde_json::Value, StatusCode> {
+    let dir = validate_repo_browse_path(dir)?;
+    let commit = resolve_repo_commit(repo_path, ref_name)?;
+    let dir_arg = (!dir.is_empty()).then(|| format!("{dir}/"));
+    let mut args = vec!["ls-tree", "-l", "-z", commit.as_str()];
+    if let Some(dir_arg) = dir_arg.as_deref() {
+        args.push("--");
+        args.push(dir_arg);
+    }
+    let output = git_bytes(repo_path, &args)?;
+    let mut entries = Vec::new();
+    for record in output.split(|b| *b == 0) {
+        if record.is_empty() {
+            continue;
+        }
+        let Some(tab) = record.iter().position(|b| *b == b'\t') else {
+            continue;
+        };
+        let meta = String::from_utf8_lossy(&record[..tab]);
+        let full_path = String::from_utf8_lossy(&record[tab + 1..]).to_string();
+        let mut parts = meta.split_whitespace();
+        let (Some(mode), Some(kind), Some(oid)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        let size = parts
+            .next()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0);
+        let name = full_path
+            .rsplit('/')
+            .next()
+            .unwrap_or(full_path.as_str())
+            .to_string();
+        entries.push(serde_json::json!({
+            "name": name,
+            "path": full_path,
+            "type": kind,
+            "mode": mode,
+            "oid": oid,
+            "size": size,
+        }));
+    }
+    entries.sort_by(|a, b| {
+        let rank = |v: &serde_json::Value| match v.get("type").and_then(|t| t.as_str()) {
+            Some("tree") => 0,
+            Some("blob") => 1,
+            _ => 2,
+        };
+        rank(a).cmp(&rank(b)).then_with(|| {
+            a.get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .cmp(b.get("name").and_then(|v| v.as_str()).unwrap_or_default())
+        })
+    });
+    let parent = if dir.is_empty() {
+        serde_json::Value::Null
+    } else {
+        match dir.rsplit_once('/') {
+            Some((parent, _)) => serde_json::json!(parent),
+            None => serde_json::json!(""),
+        }
+    };
+    Ok(serde_json::json!({
+        "ref": ref_name,
+        "commit": commit,
+        "path": dir,
+        "parent": parent,
+        "entries": entries,
+    }))
+}
+
+fn repo_file(
+    repo_path: &std::path::Path,
+    ref_name: &str,
+    path: &str,
+) -> Result<serde_json::Value, StatusCode> {
+    let path = validate_repo_browse_path(path)?;
+    if path.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let commit = resolve_repo_commit(repo_path, ref_name)?;
+    let output = git_bytes(repo_path, &["ls-tree", "-l", "-z", &commit, "--", path])?;
+    let mut found = None;
+    for record in output.split(|b| *b == 0) {
+        if record.is_empty() {
+            continue;
+        }
+        let Some(tab) = record.iter().position(|b| *b == b'\t') else {
+            continue;
+        };
+        if String::from_utf8_lossy(&record[tab + 1..]) != path {
+            continue;
+        }
+        let meta = String::from_utf8_lossy(&record[..tab]);
+        let mut parts = meta.split_whitespace();
+        let _mode = parts.next();
+        let kind = parts.next().unwrap_or("");
+        let oid = parts.next().unwrap_or("").to_string();
+        let size = parts
+            .next()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0);
+        found = Some((kind.to_string(), oid, size));
+        break;
+    }
+    let (kind, oid, size) = found.ok_or(StatusCode::NOT_FOUND)?;
+    if kind != "blob" {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if size > REPO_FILE_READ_LIMIT {
+        return Ok(serde_json::json!({
+            "ref": ref_name,
+            "commit": commit,
+            "path": path,
+            "oid": oid,
+            "size": size,
+            "binary": true,
+            "truncated": true,
+            "too_large": true,
+            "content": "",
+        }));
+    }
+    let bytes = git_bytes(repo_path, &["cat-file", "-p", &oid])?;
+    let truncated = bytes.len() > REPO_FILE_PREVIEW_LIMIT;
+    let preview = &bytes[..bytes.len().min(REPO_FILE_PREVIEW_LIMIT)];
+    let binary = preview.iter().take(8192).any(|b| *b == 0)
+        || (!truncated && std::str::from_utf8(preview).is_err());
+    Ok(serde_json::json!({
+        "ref": ref_name,
+        "commit": commit,
+        "path": path,
+        "oid": oid,
+        "size": size,
+        "binary": binary,
+        "truncated": truncated,
+        "too_large": false,
+        "content": if binary { String::new() } else { String::from_utf8_lossy(preview).to_string() },
+    }))
+}
+
+async fn get_repo_tree(
+    State(state): State<Arc<RwLock<AppState>>>,
+    AxPath(name): AxPath<String>,
+    axum::extract::Query(query): axum::extract::Query<RepoBrowseQuery>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let repo = {
+        let state = state.read().await;
+        let repo = state
+            .config
+            .repos
+            .iter()
+            .find(|r| r.name == name)
+            .cloned()
+            .ok_or(StatusCode::NOT_FOUND)?;
+        let local_auth = check_local_auth(&headers, &state.api_token).is_ok();
+        if !repo_browse_allowed(local_auth, repo.seeding) {
+            return Err(StatusCode::NOT_FOUND);
+        }
+        repo
+    };
+    let ref_name = browse_ref(&query)?;
+    let path = browse_path(&query)?;
+    let mut value = repo_tree(&repo.path, &ref_name, &path)?;
+    value["repo"] = serde_json::json!(name);
+    Ok(Json(value))
+}
+
+async fn get_repo_file(
+    State(state): State<Arc<RwLock<AppState>>>,
+    AxPath(name): AxPath<String>,
+    axum::extract::Query(query): axum::extract::Query<RepoBrowseQuery>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let repo = {
+        let state = state.read().await;
+        let repo = state
+            .config
+            .repos
+            .iter()
+            .find(|r| r.name == name)
+            .cloned()
+            .ok_or(StatusCode::NOT_FOUND)?;
+        let local_auth = check_local_auth(&headers, &state.api_token).is_ok();
+        if !repo_browse_allowed(local_auth, repo.seeding) {
+            return Err(StatusCode::NOT_FOUND);
+        }
+        repo
+    };
+    let ref_name = browse_ref(&query)?;
+    let path = browse_path(&query)?;
+    let mut value = repo_file(&repo.path, &ref_name, &path)?;
+    value["repo"] = serde_json::json!(name);
+    Ok(Json(value))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NetworkBrowseKind {
+    Tree,
+    File,
+}
+
+impl NetworkBrowseKind {
+    fn path(self) -> &'static str {
+        match self {
+            Self::Tree => "tree",
+            Self::File => "file",
+        }
+    }
+}
+
+fn network_browse_cache_path(
+    data_dir: &std::path::Path,
+    owner: &str,
+    name: &str,
+    head_sha: &str,
+    ref_name: &str,
+) -> PathBuf {
+    let mut hasher = Sha256::new();
+    for part in [owner, name, head_sha, ref_name] {
+        hasher.update(part.as_bytes());
+        hasher.update([0]);
+    }
+    data_dir
+        .join("network-browse-cache")
+        .join(hex::encode(hasher.finalize()))
+}
+
+fn ensure_network_browse_cache(
+    cache_path: &std::path::Path,
+    bundle_bytes: &[u8],
+    ref_name: &str,
+) -> Result<(), StatusCode> {
+    if cache_path.exists() && resolve_repo_commit(cache_path, ref_name).is_ok() {
+        return Ok(());
+    }
+    if cache_path.exists() {
+        let _ = std::fs::remove_dir_all(cache_path);
+    }
+    let parent = cache_path
+        .parent()
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    std::fs::create_dir_all(parent).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let id = uuid::Uuid::new_v4();
+    let bundle_path = parent.join(format!(".bundle-{id}"));
+    let tmp_clone = parent.join(format!(".clone-{id}"));
+    let cleanup = |bundle_path: &std::path::Path, tmp_clone: &std::path::Path| {
+        let _ = std::fs::remove_file(bundle_path);
+        let _ = std::fs::remove_dir_all(tmp_clone);
+    };
+    if std::fs::write(&bundle_path, bundle_bytes).is_err() {
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    let cloned = Command::new("git")
+        .args([
+            "clone",
+            "--mirror",
+            "--no-checkout",
+            &bundle_path.to_string_lossy(),
+            &tmp_clone.to_string_lossy(),
+        ])
+        .output()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !cloned.status.success() {
+        cleanup(&bundle_path, &tmp_clone);
+        return Err(StatusCode::BAD_GATEWAY);
+    }
+    match std::fs::rename(&tmp_clone, cache_path) {
+        Ok(()) => {}
+        Err(_) if cache_path.exists() && resolve_repo_commit(cache_path, ref_name).is_ok() => {}
+        Err(_) => {
+            cleanup(&bundle_path, &tmp_clone);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    }
+    let _ = std::fs::remove_file(&bundle_path);
+    Ok(())
+}
+
+async fn network_repo_browse(
+    state: Arc<RwLock<AppState>>,
+    name: String,
+    query: RepoBrowseQuery,
+    kind: NetworkBrowseKind,
+) -> Result<serde_json::Value, StatusCode> {
+    let ref_name = browse_ref(&query)?;
+    let path = browse_path(&query)?;
+    let (bootstrap_peers, data_dir) = {
+        let state = state.read().await;
+        (
+            state.config.bootstrap_peers.clone(),
+            state.config.data_dir.clone(),
+        )
+    };
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let wanted_owner = query
+        .owner
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
+    let wanted_head = query
+        .head_sha
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty());
+
+    #[derive(Clone)]
+    struct Candidate {
+        endpoint: String,
+        owner: String,
+        head_sha: String,
+    }
+    let mut candidates = Vec::new();
+
+    for peer in &bootstrap_peers {
+        let Some((host, api_port)) = parse_peer_multiaddr(peer) else {
+            continue;
+        };
+        let base = format!("http://{}:{api_port}", url_host(host));
+        let owner = match client.get(format!("{base}/api/id")).send().await {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|v| {
+                    v.get("peer_id")
+                        .and_then(|id| id.as_str())
+                        .map(ToString::to_string)
+                })
+                .unwrap_or_default(),
+            _ => String::new(),
+        };
+        if let Some(wanted) = wanted_owner {
+            if owner != wanted {
+                continue;
+            }
+        }
+        let refs_url = format!("{base}/api/repos/{}/refs", url_path_segment(&name));
+        let refs = match client.get(&refs_url).send().await {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<Vec<(String, String)>>()
+                .await
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        };
+        if refs.is_empty() {
+            continue;
+        }
+        let (_, head_sha, _) = history_details_from_refs(&refs);
+        let head_sha = head_sha.unwrap_or_default();
+        if let Some(wanted) = wanted_head {
+            if head_sha != wanted {
+                continue;
+            }
+        }
+        let candidate = Candidate {
+            endpoint: format!("{}:{api_port}", url_host(host)),
+            owner: owner.clone(),
+            head_sha: head_sha.clone(),
+        };
+
+        let mut url = reqwest::Url::parse(&format!(
+            "{base}/api/repos/{}/{}",
+            url_path_segment(&name),
+            kind.path()
+        ))
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+        url.query_pairs_mut()
+            .append_pair("ref", &ref_name)
+            .append_pair("path", &path);
+        if let Ok(resp) = client.get(url).send().await {
+            if resp.status().is_success() {
+                if let Ok(mut value) = resp.json::<serde_json::Value>().await {
+                    if let Some(object) = value.as_object_mut() {
+                        object.insert(
+                            "source_endpoint".to_string(),
+                            serde_json::json!(candidate.endpoint),
+                        );
+                        object.insert("source_owner".to_string(), serde_json::json!(owner));
+                        object.insert("source_head_sha".to_string(), serde_json::json!(head_sha));
+                        object.insert("source_mode".to_string(), serde_json::json!("api"));
+                    }
+                    return Ok(value);
+                }
+            }
+        }
+        candidates.push(candidate);
+    }
+
+    for candidate in candidates {
+        if candidate.owner.is_empty() {
+            continue;
+        }
+        let fetch_url = format!(
+            "http://{}/api/remote/{}/{}/fetch",
+            candidate.endpoint,
+            url_path_segment(&candidate.owner),
+            url_path_segment(&name)
+        );
+        let Ok(resp) = client.post(&fetch_url).send().await else {
+            continue;
+        };
+        if !resp.status().is_success() {
+            continue;
+        }
+        let Ok(bundle) = resp.bytes().await else {
+            continue;
+        };
+        let cache_path = network_browse_cache_path(
+            &data_dir,
+            &candidate.owner,
+            &name,
+            &candidate.head_sha,
+            &ref_name,
+        );
+        if ensure_network_browse_cache(&cache_path, &bundle, &ref_name).is_err() {
+            continue;
+        }
+        let mut value = match kind {
+            NetworkBrowseKind::Tree => repo_tree(&cache_path, &ref_name, &path)?,
+            NetworkBrowseKind::File => repo_file(&cache_path, &ref_name, &path)?,
+        };
+        if let Some(object) = value.as_object_mut() {
+            object.insert("repo".to_string(), serde_json::json!(name));
+            object.insert(
+                "source_endpoint".to_string(),
+                serde_json::json!(candidate.endpoint),
+            );
+            object.insert(
+                "source_owner".to_string(),
+                serde_json::json!(candidate.owner),
+            );
+            object.insert(
+                "source_head_sha".to_string(),
+                serde_json::json!(candidate.head_sha),
+            );
+            object.insert("source_mode".to_string(), serde_json::json!("bundle-cache"));
+        }
+        return Ok(value);
+    }
+
+    Err(StatusCode::NOT_FOUND)
+}
+
+async fn get_network_repo_tree(
+    State(state): State<Arc<RwLock<AppState>>>,
+    AxPath(name): AxPath<String>,
+    axum::extract::Query(query): axum::extract::Query<RepoBrowseQuery>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(
+        network_repo_browse(state, name, query, NetworkBrowseKind::Tree).await?,
+    ))
+}
+
+async fn get_network_repo_file(
+    State(state): State<Arc<RwLock<AppState>>>,
+    AxPath(name): AxPath<String>,
+    axum::extract::Query(query): axum::extract::Query<RepoBrowseQuery>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(
+        network_repo_browse(state, name, query, NetworkBrowseKind::File).await?,
+    ))
 }
 
 async fn get_repo_refs(
@@ -8493,6 +9060,68 @@ mod tests {
         assert!(merged
             .iter()
             .all(|entry| entry["seeders"] == serde_json::json!(1)));
+    }
+
+    #[test]
+    fn repo_browse_validation_and_git_object_reads() {
+        assert!(validate_repo_browse_path("").is_ok());
+        assert!(validate_repo_browse_path("src/main.rs").is_ok());
+        assert!(validate_repo_browse_path("../secret").is_err());
+        assert!(validate_repo_browse_path("src/../secret").is_err());
+        assert!(validate_repo_browse_path("/etc/passwd").is_err());
+        assert!(validate_repo_ref("HEAD").is_ok());
+        assert!(validate_repo_ref("refs/heads/main").is_ok());
+        assert!(validate_repo_ref("--upload-pack=touch").is_err());
+        assert!(!repo_browse_allowed(false, false));
+        assert!(repo_browse_allowed(true, false));
+        assert!(repo_browse_allowed(false, true));
+
+        let tmp = std::env::temp_dir().join(format!(
+            "gf_browse_test_{}_{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("src")).unwrap();
+        let run = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&tmp)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+        run(&["init", "-q"]);
+        run(&["config", "user.email", "t@t.com"]);
+        run(&["config", "user.name", "T"]);
+        std::fs::write(tmp.join("README.md"), "hello browse\n").unwrap();
+        std::fs::write(tmp.join("src/main.rs"), "fn main() {}\n").unwrap();
+        std::fs::write(tmp.join("src/blob.bin"), [0u8, 1, 2, 3]).unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-qm", "browse fixture"]);
+
+        let root = repo_tree(&tmp, "HEAD", "").unwrap();
+        let entries = root["entries"].as_array().unwrap();
+        assert!(entries
+            .iter()
+            .any(|e| e["name"] == "README.md" && e["type"] == "blob"));
+        assert!(entries
+            .iter()
+            .any(|e| e["name"] == "src" && e["type"] == "tree"));
+        let src = repo_tree(&tmp, "HEAD", "src").unwrap();
+        assert_eq!(src["entries"].as_array().unwrap().len(), 2);
+
+        let file = repo_file(&tmp, "HEAD", "README.md").unwrap();
+        assert_eq!(file["content"], serde_json::json!("hello browse\n"));
+        assert_eq!(file["binary"], serde_json::json!(false));
+        let binary = repo_file(&tmp, "HEAD", "src/blob.bin").unwrap();
+        assert_eq!(binary["binary"], serde_json::json!(true));
+        assert!(repo_file(&tmp, "HEAD", "../secret").is_err());
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
