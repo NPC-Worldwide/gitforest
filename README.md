@@ -860,6 +860,7 @@ scoped also accept a job token (`GF_JOB_TOKEN`) carrying the named permission.
 - `GET /api/status` — network status
 - `GET /api/peers` — connected peers
 - `GET /api/peers/exchange` — peer/cache/model directory for gossip
+- `GET /api/network/repos` — repos seeded across the bootstrap nodes, merged with seeder counts
 - `GET /api/analytics/summary` — peer/storage totals for the desktop app
 - `GET /api/analytics/history` — sampled peer-count history
 - `GET /api/resolve/{identifier}` — resolve a peer name tag or alias

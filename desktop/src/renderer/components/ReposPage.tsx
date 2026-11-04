@@ -18,6 +18,11 @@ export default function ReposPage() {
   const [cloneInputUrl, setCloneInputUrl] = useState('');
   const [cloneDest, setCloneDest] = useState('');
   const [cloneMsg, setCloneMsg] = useState<string | null>(null);
+  const [tab, setTab] = useState<'hosted' | 'network'>('hosted');
+  const [netRepos, setNetRepos] = useState<any[]>([]);
+  const [netMeta, setNetMeta] = useState<any>(null);
+  const [netLoading, setNetLoading] = useState(false);
+  const [selectedNet, setSelectedNet] = useState<any | null>(null);
 
   const load = useCallback(async () => {
     const [r, id] = await Promise.all([window.gf.api('/api/repos'), window.gf.api('/api/id')]);
@@ -25,10 +30,22 @@ export default function ReposPage() {
     if (id.ok) setPeerId(id.data?.peer_id || id.data || '');
   }, []);
 
+  const loadNetwork = useCallback(async () => {
+    setNetLoading(true);
+    const n = await window.gf.api('/api/network/repos');
+    setNetLoading(false);
+    if (n.ok) {
+      setNetRepos(Array.isArray(n.data?.repos) ? n.data.repos : []);
+      setNetMeta(n.data || null);
+    }
+  }, []);
+
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { if (tab === 'network') loadNetwork(); }, [tab, loadNetwork]);
 
   const openRepo = async (repo: Repo) => {
     setSelected(repo);
+    setSelectedNet(null);
     setBusy(true);
     const [d, b, l, m] = await Promise.all([
       window.gf.api(`/api/repos/${encodeURIComponent(repo.name)}`),
@@ -73,6 +90,8 @@ export default function ReposPage() {
     setShowClone(false);
     setCloneInputUrl('');
     setCloneMsg(null);
+    setSelectedNet(null);
+    setTab('hosted');
     load();
   };
 
@@ -100,11 +119,22 @@ export default function ReposPage() {
     <div className="flex h-full">
       <div className="w-72 flex-shrink-0 border-r theme-border overflow-auto">
         <div className="flex items-center justify-between px-4 py-3 border-b theme-border">
-          <h2 className="text-sm font-semibold theme-text-primary">Hosted repos</h2>
+          <div className="flex gap-3">
+            <button onClick={() => setTab('hosted')}
+              className={`text-sm font-semibold ${tab === 'hosted' ? 'theme-text-primary' : 'theme-text-muted hover:theme-text-primary'}`}>
+              Hosted
+            </button>
+            <button onClick={() => setTab('network')}
+              className={`text-sm font-semibold ${tab === 'network' ? 'theme-text-primary' : 'theme-text-muted hover:theme-text-primary'}`}>
+              Network
+            </button>
+          </div>
           <div className="flex gap-1">
-            <button onClick={load} className="p-1.5 theme-text-muted hover:theme-text-primary"><RefreshCw size={14} /></button>
+            <button onClick={tab === 'hosted' ? load : loadNetwork} className="p-1.5 theme-text-muted hover:theme-text-primary"><RefreshCw size={14} /></button>
             <button onClick={() => { setShowClone(!showClone); setCloneMsg(null); }} className="p-1.5 theme-text-muted hover:theme-text-primary" title="Clone from URL"><Download size={14} /></button>
-            <button onClick={addRepo} className="p-1.5 theme-text-muted hover:theme-text-primary" title="Add repo"><Plus size={14} /></button>
+            {tab === 'hosted' && (
+              <button onClick={addRepo} className="p-1.5 theme-text-muted hover:theme-text-primary" title="Add repo"><Plus size={14} /></button>
+            )}
           </div>
         </div>
         {showClone && (
@@ -125,8 +155,8 @@ export default function ReposPage() {
             </div>
           </div>
         )}
-        {repos.length === 0 && <p className="text-xs theme-text-muted p-4">No repos hosted. Click + to add one.</p>}
-        {repos.map((r) => (
+        {tab === 'hosted' && repos.length === 0 && <p className="text-xs theme-text-muted p-4">No repos hosted. Click + to add one.</p>}
+        {tab === 'hosted' && repos.map((r) => (
           <button key={r.name} onClick={() => openRepo(r)}
             className={`w-full text-left px-4 py-3 border-b theme-border ${selected?.name === r.name ? 'theme-bg-tertiary' : 'hover:theme-bg-tertiary'}`}>
             <div className="flex items-center gap-2">
@@ -136,11 +166,73 @@ export default function ReposPage() {
             {r.description && <p className="text-xs theme-text-muted truncate mt-0.5 pl-6">{r.description}</p>}
           </button>
         ))}
+        {tab === 'network' && netMeta && (
+          <p className="text-xs theme-text-muted px-4 pt-3">
+            {netRepos.length} repos · {Array.isArray(netMeta.bootstraps) ? netMeta.bootstraps.filter((b: any) => b.ok).length : 0}/{Array.isArray(netMeta.bootstraps) ? netMeta.bootstraps.length : 0} bootstraps up
+          </p>
+        )}
+        {tab === 'network' && netLoading && netRepos.length === 0 && <p className="text-xs theme-text-muted p-4">Scanning bootstrap nodes…</p>}
+        {tab === 'network' && !netLoading && netRepos.length === 0 && <p className="text-xs theme-text-muted p-4">No network repos found. Are the bootstraps reachable?</p>}
+        {tab === 'network' && netRepos.map((r: any) => (
+          <button key={`${r.owner}/${r.name}`} onClick={() => { setSelected(null); setSelectedNet(r); }}
+            className={`w-full text-left px-4 py-3 border-b theme-border ${selectedNet?.owner === r.owner && selectedNet?.name === r.name ? 'theme-bg-tertiary' : 'hover:theme-bg-tertiary'}`}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <GitBranch size={14} className="text-emerald-500 flex-shrink-0" />
+                <span className="text-sm theme-text-primary truncate">{r.name}</span>
+              </div>
+              <span className="text-xs theme-text-muted flex-shrink-0">{r.seeders ?? 0} seeder{(r.seeders ?? 0) === 1 ? '' : 's'}</span>
+            </div>
+            <p className="text-xs theme-text-muted truncate mt-0.5 pl-6">{String(r.owner || '').slice(0, 12)}…{r.description ? ` · ${r.description}` : ''}</p>
+          </button>
+        ))}
       </div>
 
       <div className="flex-1 overflow-auto p-6">
-        {!selected && (
+        {!selected && !selectedNet && (
           <div className="h-full flex items-center justify-center theme-text-muted text-sm">Select a repo, or add one with the + button.</div>
+        )}
+        {!selected && selectedNet && (
+          <>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-xl font-bold theme-text-primary">{selectedNet.name}</h1>
+                <div className="flex items-center gap-2 mt-1">
+                  <code className="text-xs theme-text-muted theme-bg-tertiary rounded px-2 py-0.5 truncate max-w-md">{selectedNet.clone_url}</code>
+                  <button onClick={() => { navigator.clipboard.writeText(selectedNet.clone_url || ''); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+                    className="theme-text-muted hover:theme-text-primary">
+                    {copied ? <CheckCircle2 size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                  </button>
+                </div>
+              </div>
+              <button onClick={() => { setCloneInputUrl(selectedNet.clone_url || ''); setCloneMsg(null); setShowClone(true); }}
+                className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded px-3 py-1.5">
+                <Download size={12} /> Clone
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="theme-bg-secondary rounded border theme-border p-4">
+                <p className="text-xs theme-text-muted mb-1">Seeders</p>
+                <p className="text-2xl font-semibold theme-text-primary">{selectedNet.seeders ?? 0}</p>
+              </div>
+              <div className="theme-bg-secondary rounded border theme-border p-4">
+                <p className="text-xs theme-text-muted mb-1">Owner</p>
+                <p className="text-sm font-mono theme-text-primary truncate">{String(selectedNet.owner || '')}</p>
+              </div>
+              <div className="theme-bg-secondary rounded border theme-border p-4">
+                <p className="text-xs theme-text-muted mb-1">Seen on</p>
+                <p className="text-sm theme-text-primary">{Array.isArray(selectedNet.seen_on) ? selectedNet.seen_on.join(', ') : '–'}</p>
+              </div>
+            </div>
+
+            {selectedNet.description && (
+              <div className="theme-bg-secondary rounded border theme-border">
+                <h3 className="text-sm font-semibold theme-text-primary px-4 py-3 border-b theme-border">About</h3>
+                <p className="text-sm theme-text-secondary p-4">{selectedNet.description}</p>
+              </div>
+            )}
+          </>
         )}
         {selected && (
           <>

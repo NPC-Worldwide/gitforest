@@ -473,6 +473,7 @@ pub async fn start_api(
         .route("/api/analytics/history", get(get_analytics_history))
         .route("/api/peers", get(get_peers))
         .route("/api/peers/exchange", get(peer_exchange))
+        .route("/api/network/repos", get(list_network_repos))
         // Collaboration
         .route(
             "/api/repos/{name}/patches",
@@ -1557,6 +1558,149 @@ async fn list_repos(State(state): State<Arc<RwLock<AppState>>>) -> Json<Vec<serd
     let state = state.read().await;
     let repos: Vec<serde_json::Value> = state.config.repos.iter().map(repo_to_json).collect();
     Json(repos)
+}
+
+fn merge_network_repos(
+    per_bootstrap: Vec<(String, Option<Vec<serde_json::Value>>)>,
+) -> Vec<serde_json::Value> {
+    let mut merged: std::collections::HashMap<(String, String), serde_json::Value> =
+        std::collections::HashMap::new();
+    for (host, repos) in per_bootstrap {
+        let Some(repos) = repos else { continue };
+        for r in repos {
+            let name = r.get("name").and_then(|v| v.as_str()).unwrap_or("").trim();
+            let owner = r.get("owner").and_then(|v| v.as_str()).unwrap_or("").trim();
+            if name.is_empty() || owner.is_empty() {
+                continue;
+            }
+            let entry = merged
+                .entry((owner.to_string(), name.to_string()))
+                .or_insert_with(|| {
+                    serde_json::json!({
+                        "name": name,
+                        "owner": owner,
+                        "description": r.get("description").and_then(|v| v.as_str()).unwrap_or(""),
+                        "clone_url": r.get("clone_url").and_then(|v| v.as_str()).unwrap_or(""),
+                        "seeders": 0,
+                        "seen_on": Vec::<String>::new(),
+                    })
+                });
+            let seen_on = entry.get_mut("seen_on").and_then(|v| v.as_array_mut());
+            if let Some(seen_on) = seen_on {
+                if !seen_on.iter().any(|v| v.as_str() == Some(host.as_str())) {
+                    seen_on.push(serde_json::Value::String(host.clone()));
+                    entry["seeders"] = serde_json::json!(seen_on.len());
+                }
+            }
+            for field in ["description", "clone_url"] {
+                if entry
+                    .get(field)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .is_empty()
+                {
+                    if let Some(value) = r.get(field).and_then(|v| v.as_str()) {
+                        entry[field] = serde_json::Value::String(value.to_string());
+                    }
+                }
+            }
+        }
+    }
+    let mut out: Vec<serde_json::Value> = merged.into_values().collect();
+    out.sort_by(|a, b| {
+        let seeders =
+            |v: &serde_json::Value| v.get("seeders").and_then(|s| s.as_u64()).unwrap_or(0);
+        let name = |v: &serde_json::Value| {
+            v.get("name")
+                .and_then(|s| s.as_str())
+                .unwrap_or_default()
+                .to_lowercase()
+        };
+        seeders(b)
+            .cmp(&seeders(a))
+            .then_with(|| name(a).cmp(&name(b)))
+    });
+    out
+}
+
+async fn list_network_repos(State(state): State<Arc<RwLock<AppState>>>) -> Json<serde_json::Value> {
+    let bootstrap_peers = state.read().await.config.bootstrap_peers.clone();
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap_or_default();
+    let mut set = tokio::task::JoinSet::new();
+    for peer in &bootstrap_peers {
+        let client = client.clone();
+        let peer = peer.clone();
+        set.spawn(async move {
+            let started = std::time::Instant::now();
+            let latency = || started.elapsed().as_millis() as u64;
+            let Some((host, api_port)) = parse_peer_multiaddr(&peer) else {
+                return (
+                    peer,
+                    None,
+                    latency(),
+                    Some("unparseable multiaddr".to_string()),
+                );
+            };
+            let url = format!("http://{host}:{api_port}/api/repos");
+            match client.get(&url).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(serde_json::Value::Array(repos)) => (peer, Some(repos), latency(), None),
+                        Ok(_) => (peer, None, latency(), Some("unexpected shape".to_string())),
+                        Err(e) => (peer, None, latency(), Some(format!("bad json: {e}"))),
+                    }
+                }
+                Ok(resp) => (
+                    peer,
+                    None,
+                    latency(),
+                    Some(format!("http {}", resp.status())),
+                ),
+                Err(e) => (peer, None, latency(), Some(e.to_string())),
+            }
+        });
+    }
+    let mut results = Vec::new();
+    while let Some(joined) = set.join_next().await {
+        if let Ok(result) = joined {
+            results.push(result);
+        }
+    }
+    let mut bootstraps = Vec::new();
+    let mut per_bootstrap = Vec::new();
+    for (peer, repos, latency_ms, error) in results {
+        let host = parse_peer_multiaddr(&peer).map(|(h, _)| h.to_string());
+        let mut status = serde_json::json!({
+            "ip": host.as_deref().unwrap_or(""),
+            "ok": repos.is_some(),
+            "latency_ms": latency_ms,
+        });
+        if let Some(repos) = repos {
+            status["repos"] = serde_json::json!(repos.len());
+            per_bootstrap.push((host.unwrap_or_default(), Some(repos)));
+        } else {
+            status["repos"] = serde_json::json!(0);
+            if let Some(error) = error {
+                status["error"] = serde_json::Value::String(error.chars().take(200).collect());
+            }
+            per_bootstrap.push((host.unwrap_or_default(), None));
+        }
+        bootstraps.push(status);
+    }
+    bootstraps.sort_by(|a, b| {
+        a.get("ip")
+            .and_then(|v| v.as_str())
+            .cmp(&b.get("ip").and_then(|v| v.as_str()))
+    });
+    Json(serde_json::json!({
+        "updated": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        "bootstraps": bootstraps,
+        "repos": merge_network_repos(per_bootstrap),
+    }))
 }
 
 async fn get_repo(
@@ -7764,6 +7908,46 @@ mod tests {
         assert!(got.get("peer_id").is_some());
         assert!(got.get("display_name").is_some());
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn merge_network_repos_counts_seeders_and_sorts() {
+        let repo = |name: &str, owner: &str, description: &str, clone_url: &str| {
+            serde_json::json!({
+                "name": name,
+                "owner": owner,
+                "description": description,
+                "clone_url": clone_url,
+            })
+        };
+        let merged = merge_network_repos(vec![
+            (
+                "10.0.0.1".to_string(),
+                Some(vec![
+                    repo("npcsh", "aaa", "shell", "gitforest://aaa/npcsh"),
+                    repo("solo", "bbb", "", ""),
+                ]),
+            ),
+            (
+                "10.0.0.2".to_string(),
+                Some(vec![
+                    repo("npcsh", "aaa", "", "gitforest://aaa/npcsh"),
+                    repo("", "ccc", "nameless", ""),
+                    repo("ghost", "", "ownerless", ""),
+                ]),
+            ),
+            ("10.0.0.3".to_string(), None),
+        ]);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0]["name"], serde_json::json!("npcsh"));
+        assert_eq!(merged[0]["seeders"], serde_json::json!(2));
+        assert_eq!(
+            merged[0]["seen_on"],
+            serde_json::json!(["10.0.0.1", "10.0.0.2"])
+        );
+        assert_eq!(merged[0]["description"], serde_json::json!("shell"));
+        assert_eq!(merged[1]["name"], serde_json::json!("solo"));
+        assert_eq!(merged[1]["seeders"], serde_json::json!(1));
     }
 
     #[test]
