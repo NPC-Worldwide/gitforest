@@ -33,6 +33,15 @@ jobs:
             echo "tag v$TAG_VERSION does not match workspace version $PKG_VERSION"
             exit 1
           fi
+      - name: Check desktop version matches workspace version
+        run: |
+          PKG_VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml','rb'))['workspace']['package']['version'])")
+          DESK_VERSION=$(python3 -c "import json; print(json.load(open('desktop/package.json'))['version'])")
+          LOCK_VERSION=$(python3 -c "import json; print(json.load(open('desktop/package-lock.json'))['version'])")
+          if [ "$DESK_VERSION" != "$PKG_VERSION" ] || [ "$LOCK_VERSION" != "$PKG_VERSION" ]; then
+            echo "desktop version $DESK_VERSION (lock $LOCK_VERSION) does not match workspace version $PKG_VERSION"
+            exit 1
+          fi
 
   preflight:
     runs-on: ubuntu-latest
@@ -163,7 +172,7 @@ jobs:
           path: desktop/release/*.dmg
 
   publish-gcs:
-    needs: [preflight, build-linux, build-macos, build-deb]
+    needs: [preflight, build-linux, build-macos, build-deb, build-desktop-linux, build-desktop-macos]
     if: needs.preflight.outputs.cloud == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -201,6 +210,16 @@ jobs:
           # Stable alias for the current release
           gsutil cp artifacts/gitforest-deb/gitforest_${VERSION}_amd64.deb \
             gs://gitforest-executables/linux-x64/gitforest_amd64.deb
+          gsutil cp install.sh gs://gitforest-executables/install.sh
+          for f in artifacts/gitforest-desktop-linux/*.deb; do
+            gsutil cp "$f" gs://gitforest-executables/desktop/gitforest-desktop-linux-x64.deb
+          done
+          for f in artifacts/gitforest-desktop-linux/*.AppImage; do
+            gsutil cp "$f" gs://gitforest-executables/desktop/gitforest-desktop-linux-x64.AppImage
+          done
+          for f in artifacts/gitforest-desktop-macos/*.dmg; do
+            gsutil cp "$f" gs://gitforest-executables/desktop/gitforest-desktop-macos-arm64.dmg
+          done
 
       - name: Publish manifest
         run: |
@@ -216,7 +235,11 @@ jobs:
               "linux-deb-stable": "https://storage.googleapis.com/gitforest-executables/linux-x64/gitforest_amd64.deb",
               "linux-tar-sha256": "https://storage.googleapis.com/gitforest-executables/linux-x64/gitforest-linux-x64.tar.gz.sha256",
               "macos-tar-sha256": "https://storage.googleapis.com/gitforest-executables/macos-arm64/gitforest-macos-arm64.tar.gz.sha256",
-              "linux-deb-sha256": "https://storage.googleapis.com/gitforest-executables/linux-x64/gitforest_${VERSION}_amd64.deb.sha256"
+              "linux-deb-sha256": "https://storage.googleapis.com/gitforest-executables/linux-x64/gitforest_${VERSION}_amd64.deb.sha256",
+              "install": "https://storage.googleapis.com/gitforest-executables/install.sh",
+              "desktop-linux-deb": "https://storage.googleapis.com/gitforest-executables/desktop/gitforest-desktop-linux-x64.deb",
+              "desktop-linux-appimage": "https://storage.googleapis.com/gitforest-executables/desktop/gitforest-desktop-linux-x64.AppImage",
+              "desktop-macos-dmg": "https://storage.googleapis.com/gitforest-executables/desktop/gitforest-desktop-macos-arm64.dmg"
             }
           }
           EOF

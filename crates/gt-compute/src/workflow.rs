@@ -2028,8 +2028,8 @@ pub fn substitute_inputs(text: &str, inputs: &HashMap<String, String>) -> String
     substitute_context(text, inputs, "inputs")
 }
 
-pub fn substitute_github(text: &str, github: &HashMap<String, String>) -> String {
-    substitute_context(text, github, "github")
+pub fn substitute_gitforest(text: &str, gitforest: &HashMap<String, String>) -> String {
+    substitute_context(text, gitforest, "gitforest")
 }
 
 fn valid_context_name(name: &str) -> bool {
@@ -2423,11 +2423,7 @@ pub fn order_jobs(jobs: &[ExpandedJob]) -> Result<Vec<ExpandedJob>> {
 
 pub fn workflow_files_in(repo_path: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut out = Vec::new();
-    for dir in [
-        "gitforest/workflows",
-        ".gitforest/workflows",
-        ".github/workflows",
-    ] {
+    for dir in ["gitforest/workflows", ".gitforest/workflows"] {
         let base = repo_path.join(dir);
         let entries = match std::fs::read_dir(&base) {
             Ok(entries) => entries,
@@ -3667,10 +3663,10 @@ jobs:
     #[test]
     fn workflow_files_cover_both_layouts() {
         let root = std::env::temp_dir().join(format!("gf_workflows_{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(root.join(".github/workflows")).unwrap();
+        std::fs::create_dir_all(root.join(".gitforest/workflows")).unwrap();
         std::fs::create_dir_all(root.join(".gitforest/workflows")).unwrap();
         std::fs::write(
-            root.join(".github/workflows/ci.yml"),
+            root.join(".gitforest/workflows/ci.yml"),
             "on: push\njobs:\n  a:\n    steps:\n      - run: echo hi\n",
         )
         .unwrap();
@@ -3679,7 +3675,11 @@ jobs:
             "on: push\njobs:\n  b:\n    steps:\n      - run: echo hi\n",
         )
         .unwrap();
-        std::fs::write(root.join(".github/workflows/README.md"), "not a workflow").unwrap();
+        std::fs::write(
+            root.join(".gitforest/workflows/README.md"),
+            "not a workflow",
+        )
+        .unwrap();
         let files = workflow_files_in(&root);
         assert_eq!(files.len(), 2);
         let loaded = load_workflows(&root);
@@ -4373,38 +4373,38 @@ jobs:
             UsesTarget::Local("../shared/x.yml".to_string())
         );
         assert_eq!(
-            parse_uses_target("shared/.github/workflows/build.yml@abc123").unwrap(),
+            parse_uses_target("shared/.gitforest/workflows/build.yml@abc123").unwrap(),
             UsesTarget::Remote {
                 repo: "shared".to_string(),
-                path: ".github/workflows/build.yml".to_string(),
+                path: ".gitforest/workflows/build.yml".to_string(),
                 git_ref: "abc123".to_string(),
             }
         );
-        assert!(parse_uses_target("shared/.github/workflows/build.yml@feature/x").is_ok());
+        assert!(parse_uses_target("shared/.gitforest/workflows/build.yml@feature/x").is_ok());
         assert_eq!(
-            parse_uses_target("shared/.github/workflows/build.yml").unwrap(),
-            UsesTarget::Local("shared/.github/workflows/build.yml".to_string())
+            parse_uses_target("shared/.gitforest/workflows/build.yml").unwrap(),
+            UsesTarget::Local("shared/.gitforest/workflows/build.yml".to_string())
         );
         assert_eq!(
             parse_uses_target("/abs/path.yml").unwrap(),
             UsesTarget::Local("/abs/path.yml".to_string())
         );
         assert_eq!(
-            parse_uses_target("shared/.github/actions/echo/action.yml@v1").unwrap(),
+            parse_uses_target("shared/.gitforest/actions/echo/action.yml@v1").unwrap(),
             UsesTarget::Remote {
                 repo: "shared".to_string(),
-                path: ".github/actions/echo/action.yml".to_string(),
+                path: ".gitforest/actions/echo/action.yml".to_string(),
                 git_ref: "v1".to_string(),
             }
         );
         for bad in [
             "",
-            "shared/.github/workflows/build.txt@abc123",
-            "shared/.github/workflows/../evil.yml@abc123",
-            "shared/.github/workflows/build.yml@",
-            "shared/.github/workflows/build.yml@-x",
-            "shared/.github/workflows/build.yml@a b",
-            "shared/.github/workflows/build.yml@x@{y}",
+            "shared/.gitforest/workflows/build.txt@abc123",
+            "shared/.gitforest/workflows/../evil.yml@abc123",
+            "shared/.gitforest/workflows/build.yml@",
+            "shared/.gitforest/workflows/build.yml@-x",
+            "shared/.gitforest/workflows/build.yml@a b",
+            "shared/.gitforest/workflows/build.yml@x@{y}",
             "actions/checkout@v4",
         ] {
             assert!(parse_uses_target(bad).is_err(), "{bad}");
@@ -4636,7 +4636,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: ./outer.yml
-        if: github.event_name == 'push'
+        if: gitforest.event_name == 'push'
 "#,
         )]);
         std::fs::write(
@@ -4981,7 +4981,7 @@ jobs:
     }
 
     #[test]
-    fn concurrency_group_takes_inputs_then_github() {
+    fn concurrency_group_takes_inputs_then_gitforest() {
         let yaml = r#"
 on:
   workflow_dispatch:
@@ -4991,7 +4991,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    concurrency: ${{ inputs.env }}-${{ github.ref_name }}
+    concurrency: ${{ inputs.env }}-${{ gitforest.ref_name }}
     steps:
       - run: echo deploy
 "#;
@@ -5002,20 +5002,20 @@ jobs:
         assert_eq!(expanded.len(), 1);
         assert_eq!(
             expanded[0].concurrency_group,
-            "staging-${{ github.ref_name }}"
+            "staging-${{ gitforest.ref_name }}"
         );
-        let github = HashMap::from([("ref_name".to_string(), "main".to_string())]);
+        let gitforest = HashMap::from([("ref_name".to_string(), "main".to_string())]);
         assert_eq!(
-            substitute_github(&expanded[0].concurrency_group, &github),
+            substitute_gitforest(&expanded[0].concurrency_group, &gitforest),
             "staging-main"
         );
     }
 
     #[test]
-    fn substitute_github_blanks_unknown_keys() {
-        let github = HashMap::from([("ref".to_string(), "refs/heads/main".to_string())]);
+    fn substitute_gitforest_blanks_unknown_keys() {
+        let gitforest = HashMap::from([("ref".to_string(), "refs/heads/main".to_string())]);
         assert_eq!(
-            substitute_github("a-${{ github.sha }}-${{github.ref}}", &github),
+            substitute_gitforest("a-${{ gitforest.sha }}-${{gitforest.ref}}", &gitforest),
             "a--refs/heads/main"
         );
     }

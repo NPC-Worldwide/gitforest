@@ -1,6 +1,6 @@
-# GitForest Operations Runbook
+# gitforest Operations Runbook
 
-How to install, run, join, and upgrade a GitForest node. Every command
+How to install, run, join, and upgrade a gitforest node. Every command
 below matches the current CLI and config surface.
 
 ## Ports
@@ -9,7 +9,7 @@ Each daemon listens on three ports derived from one setting:
 
 | Purpose | Port | Notes |
 |---|---|---|
-| HTTP API + web UI | `api_port` (default 7878) | bind 127.0.0.1 unless clustering |
+| HTTP API | `api_port` (default 7878) | bind 127.0.0.1 unless clustering; the desktop app talks to it |
 | libp2p / DHT | `p2p_port` (default 9418) | TCP, must be reachable by peers |
 | git protocol | `p2p_port + 1` (default 9419) | derived, no separate setting |
 
@@ -23,12 +23,13 @@ when `api_port` collides with either of the other two.
 Pick one path. All of them ship `gitforest`, `gtfo` (short alias),
 and `git-remote-gitforest` (the `gitforest://` remote helper).
 
-- Script (after the first release is cut):
-  `curl -fsSL https://raw.githubusercontent.com/NPC-Worldwide/gitforest/main/install.sh | bash`
-  Installs to `~/.local/bin` from the latest GitHub release.
+- Script:
+  `curl -fsSL https://storage.googleapis.com/gitforest-executables/install.sh | bash`
+  Installs to `~/.local/bin` from the latest release.
 - CLI deb: `sudo dpkg -i gitforest_<version>_amd64.deb` from the
   release page. Binaries land in `/usr/bin`.
-- Desktop deb: `sudo dpkg -i GitForest_*_amd64.deb`. Links the CLI
+- Desktop deb: `sudo dpkg -i gitforest-desktop_*_amd64.deb` (from the
+  release's desktop assets). Links the CLI
   tools plus `gitforest-desktop` into `/usr/local/bin`.
 - From source: `cargo build --release -p gt-daemon -p gt-remote`,
   then use `target/release/{gitforest,gtfo,git-remote-gitforest}`.
@@ -144,11 +145,14 @@ quoted multiaddrs), `GF_ADVERTISE_ADDR`, `GF_CLUSTER_TOKEN`,
 
 ## Cutting a release (maintainers)
 
-Push a `v*` tag. The release workflow builds the Linux/macOS CLI
+1. Bump `version` in `Cargo.toml` (workspace) and in
+`desktop/package.json` + `desktop/package-lock.json` — all three must
+match, and the tag must match them too (the release gates enforce
+both). Refresh `Cargo.lock` with any cargo run, then commit.
+2. Push a `v*` tag. The release workflow builds the Linux/macOS CLI
 tarballs, the CLI deb, and the desktop deb/AppImage/dmg, then
-attaches everything to the GitHub release — which is what
-`install.sh` downloads. No release exists yet: until the first tag
-lands, `install.sh` 404s and from-source is the only path.
+attaches everything to the release — which is what
+`install.sh` downloads.
 
 ## Troubleshooting
 

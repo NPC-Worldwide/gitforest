@@ -49,7 +49,7 @@ export default function SettingsPage() {
           className="w-full flex items-center justify-between theme-bg-tertiary border border-emerald-700 rounded p-3 mb-6 text-left">
           <span className="text-sm theme-text-primary flex items-center gap-2">
             <ArrowUpCircle size={16} className="text-emerald-500" />
-            GitForest {update.latestVersion} available (you have {update.currentVersion})
+            gitforest {update.latestVersion} available (you have {update.currentVersion})
           </span>
           <ExternalLink size={14} className="theme-text-muted" />
         </button>

@@ -1,4 +1,4 @@
-# Tasks: GitForest Production Product (001)
+# Tasks: gitforest Production Product (001)
 
 Derived from spec.md + plan.md. Check off during hackathon. Order = dependency order.
 
@@ -20,7 +20,7 @@ Derived from spec.md + plan.md. Check off during hackathon. Order = dependency o
 - [ ] T2.4 `GET/POST /api/profile` — signed profile record at DHT key `profile/<peer_id>`
 - [ ] T2.5 Metrics ring buffer: sqlite at data_dir/metrics.db, 5s sampler (peers, bytes up/down, active transfers, jobs), 7-day cap, delete-on-corrupt
 - [ ] T2.6 `GET /api/analytics/summary` + `GET /api/analytics/history?window=`
-- [ ] T2.7 `POST /api/daemon/restart`, `GET /api/daemon/logs?tail=N`, `GET /api/version/latest` (cached GitHub check)
+- [ ] T2.7 `POST /api/daemon/restart`, `GET /api/daemon/logs?tail=N`, `GET /api/version/latest` (cached gitforest check)
 - [ ] T2.8 Fix runner.rs `peak_cpu_percent` TODO via bollard stats stream (or honestly drop the field)
 - [ ] T2.9 Fill compute status/offers CLI TODOs in main.rs (query daemon API instead of stubbing)
 - [ ] T2.10 `POST /api/repos/clone` — accepts {url, dest}, runs `git clone gitforest://…` server-side so the desktop first-run wizard can clone without shelling out
@@ -32,7 +32,7 @@ Derived from spec.md + plan.md. Check off during hackathon. Order = dependency o
 - [~] T3.4 Repos page: list/detail(branches/log)/add-existing/clone-URL-copy DONE; refs/ACL detail + create-new pending backend shape
 - [~] T3.5 MR inbox UI + accept/reject buttons done; pending backend per-MR action routes (collection GET/POST exists today)
 - [~] T3.6 Profile page UI done (ID, fingerprint, display-name form, backup/restore buttons); live behavior gates on T2.2–T2.4, degrades gracefully
-- [~] T3.7 Settings: start/stop/restart, log viewer, GitHub-release update banner DONE; port edit pending T2.7 config endpoint
+- [~] T3.7 Settings: start/stop/restart, log viewer, gitforest-release update banner DONE; port edit pending T2.7 config endpoint
 - [~] T3.8 First-run wizard UI complete (5-step stepper, progress bar, identity gen, backup CTA, clone CTA); E2E pending T2.2 + POST /api/repos/clone backend route
 
 ## Phase 4 — Analytics UI (WS-E)

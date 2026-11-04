@@ -52,8 +52,8 @@ docker push "$IMAGE" >/dev/null 2>&1 || fail "push failed"
 docker rmi -f "$IMAGE" >/dev/null 2>&1 || true
 echo "private registry up with $IMAGE (local copy removed)"
 
-mkdir -p "$TMP/home" "$TMP/data" "$TMP/repo/.github/workflows"
-cat > "$TMP/repo/.github/workflows/registry.yml" <<EOF
+mkdir -p "$TMP/home" "$TMP/data" "$TMP/repo/.gitforest/workflows"
+cat > "$TMP/repo/.gitforest/workflows/registry.yml" <<EOF
 name: RegistryCreds
 on:
   workflow_dispatch:
@@ -73,7 +73,7 @@ jobs:
     artifacts:
       - reg.txt
 EOF
-cat > "$TMP/repo/.github/workflows/registry-bad.yml" <<EOF
+cat > "$TMP/repo/.gitforest/workflows/registry-bad.yml" <<EOF
 name: RegistryBadCreds
 on:
   workflow_dispatch:

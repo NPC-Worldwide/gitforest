@@ -1,4 +1,4 @@
-# Implementation Plan: GitForest Production Product
+# Implementation Plan: gitforest Production Product
 
 **Feature**: 001-production-product | **Spec**: specs/001-production-product/spec.md
 **Target**: Hackathon week → tag `v0.3.0` release + live bootstrap network + desktop client MVP
@@ -41,7 +41,7 @@ New endpoints in gt-daemon:
 - `POST /api/identity/export` (passphrase-encrypted, rage/age format) + `POST /api/identity/import` (explicit overwrite flag)
 - `GET/POST /api/profile` — signed profile record, published/read via DHT key `profile/<peer_id>`
 - `GET /api/analytics/summary`, `GET /api/analytics/history?window=24h`
-- `POST /api/daemon/restart`, `GET /api/daemon/logs?tail=N`, `GET /api/version/latest` (GitHub release check, cached 1h)
+- `POST /api/daemon/restart`, `GET /api/daemon/logs?tail=N`, `GET /api/version/latest` (gitforest release check, cached 1h)
 - Metrics collector: sample transfer bytes/s, peer count, job durations every 5s into sqlite at data_dir/metrics.db (ring buffer capped 7 days, delete-on-corrupt)
 
 ### WS-D: Desktop client MVP (US-1,2,3,5) — Day 2–4  [SCAFFOLD DONE — desktop/]

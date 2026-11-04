@@ -3,7 +3,7 @@ name = "gt-dht"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "GitForest DHT node and repository discovery"
+description = "gitforest DHT node and repository discovery"
 
 [dependencies]
 gt-core = { path = "../gt-core" }

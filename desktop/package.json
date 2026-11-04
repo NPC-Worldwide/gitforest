@@ -1,8 +1,8 @@
 {
   "name": "gitforest-desktop",
-  "version": "0.3.0",
-  "description": "GitForest Desktop - P2P git hosting client",
-  "author": "GitForest",
+  "version": "0.1.3",
+  "description": "gitforest desktop - P2P git hosting client",
+  "author": "gitforest",
   "license": "AGPL-3.0-or-later",
   "homepage": "https://gitforest.net",
   "type": "module",
@@ -38,7 +38,7 @@
   },
   "build": {
     "appId": "com.npcworldwide.gitforest",
-    "productName": "GitForest",
+    "productName": "gitforest",
     "directories": {
       "output": "release"
     },
@@ -81,7 +81,7 @@
     },
     "linux": {
       "icon": "gitforest.png",
-      "maintainer": "GitForest <info@npcworldwi.de>",
+      "maintainer": "gitforest <info@npcworldwi.de>",
       "target": ["deb", "AppImage"],
       "executableName": "gitforest-desktop"
     },

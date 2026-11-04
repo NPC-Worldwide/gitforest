@@ -180,7 +180,7 @@ async function toolStop() {
 const TOOLS = [
   {
     name: 'gui_launch',
-    description: 'Launch the GitForest desktop app under a scratch home with CDP enabled and connect. Fails if port 7878 is busy.',
+    description: 'Launch the gitforest desktop app under a scratch home with CDP enabled and connect. Fails if port 7878 is busy.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     run: () => toolLaunch(),
   },

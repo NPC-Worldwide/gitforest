@@ -159,7 +159,7 @@ pub fn valid_output_key(key: &str) -> bool {
 
 pub const STEP_MARKER_KEY: &str = "__GF_STEP__";
 
-pub fn parse_github_outputs(data: &[u8]) -> std::collections::HashMap<String, String> {
+pub fn parse_gitforest_outputs(data: &[u8]) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
     for (_, key, value) in parse_output_entries(data) {
         if out.len() >= MAX_OUTPUT_KEYS && !out.contains_key(&key) {
@@ -170,7 +170,7 @@ pub fn parse_github_outputs(data: &[u8]) -> std::collections::HashMap<String, St
     out
 }
 
-pub fn parse_github_outputs_with_steps(
+pub fn parse_gitforest_outputs_with_steps(
     data: &[u8],
 ) -> (
     std::collections::HashMap<String, String>,
@@ -249,7 +249,7 @@ pub fn finalize_job_outputs(
     config: &crate::job::JobConfig,
     job: &crate::job::ComputeJob,
 ) -> std::collections::HashMap<String, String> {
-    let (mut outputs, per_step) = parse_github_outputs_with_steps(outputs_raw);
+    let (mut outputs, per_step) = parse_gitforest_outputs_with_steps(outputs_raw);
     if !config.outputs.is_empty() {
         let ctx = crate::ifexpr::IfContext {
             inputs: job.dispatch_inputs.clone(),
@@ -2253,23 +2253,23 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_github_outputs() {
+    fn test_parse_gitforest_outputs() {
         use std::collections::HashMap;
         let data = b"SHA=abc123\nEMPTY=\n1BAD=no\nno-equals-here\nMULTI<<EOF\nline one\nline two\nEOF\nAFTER=yes\n";
-        let parsed = parse_github_outputs(data);
+        let parsed = parse_gitforest_outputs(data);
         assert_eq!(parsed.get("SHA").unwrap(), "abc123");
         assert_eq!(parsed.get("EMPTY").unwrap(), "");
         assert!(!parsed.contains_key("1BAD"));
         assert_eq!(parsed.get("MULTI").unwrap(), "line one\nline two");
         assert_eq!(parsed.get("AFTER").unwrap(), "yes");
         let crlf = b"KEY=value\r\nOTHER<<DONE\r\na\r\nDONE\r\n";
-        let parsed = parse_github_outputs(crlf);
+        let parsed = parse_gitforest_outputs(crlf);
         assert_eq!(parsed.get("KEY").unwrap(), "value");
         assert_eq!(parsed.get("OTHER").unwrap(), "a");
         let dupes = b"KEY=first\nKEY=second\n";
-        assert_eq!(parse_github_outputs(dupes).get("KEY").unwrap(), "second");
+        assert_eq!(parse_gitforest_outputs(dupes).get("KEY").unwrap(), "second");
         let marked = b"PRE=0\n__GF_STEP__=build\nSHA=abc\n__GF_STEP__=test\nOK=1\n";
-        let (union, per_step) = parse_github_outputs_with_steps(marked);
+        let (union, per_step) = parse_gitforest_outputs_with_steps(marked);
         assert!(!union.contains_key("__GF_STEP__"));
         assert_eq!(union.get("SHA").unwrap(), "abc");
         assert_eq!(union.get("PRE").unwrap(), "0");
@@ -2287,17 +2287,17 @@ mod tests {
         assert_eq!(resolved.len(), 1);
         let unterminated = b"KEY<<EOF\npartial";
         assert_eq!(
-            parse_github_outputs(unterminated).get("KEY").unwrap(),
+            parse_gitforest_outputs(unterminated).get("KEY").unwrap(),
             "partial"
         );
         let mut many = Vec::new();
         for i in 0..200 {
             many.extend_from_slice(format!("K{i:03}=v\n").as_bytes());
         }
-        assert_eq!(parse_github_outputs(&many).len(), MAX_OUTPUT_KEYS);
+        assert_eq!(parse_gitforest_outputs(&many).len(), MAX_OUTPUT_KEYS);
         let big_value = format!("BIG={}\n", "x".repeat(MAX_OUTPUT_VALUE_BYTES + 10));
         assert_eq!(
-            parse_github_outputs(big_value.as_bytes())
+            parse_gitforest_outputs(big_value.as_bytes())
                 .get("BIG")
                 .unwrap()
                 .len(),

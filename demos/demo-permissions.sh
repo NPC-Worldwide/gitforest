@@ -29,8 +29,8 @@ fail() {
 echo "== gitforest job permissions + token proof =="
 (cd "$ROOT" && cargo build --release -p gt-daemon) || fail "build failed"
 
-mkdir -p "$TMP/perms/.github/workflows" "$TMP/perms/probes"
-cat > "$TMP/perms/.github/workflows/tokens.yml" <<'EOF'
+mkdir -p "$TMP/perms/.gitforest/workflows" "$TMP/perms/probes"
+cat > "$TMP/perms/.gitforest/workflows/tokens.yml" <<'EOF'
 name: TokenProof
 on: push
 permissions:
@@ -105,7 +105,7 @@ jobs:
     artifacts:
       - cache-restore.txt
 EOF
-cat > "$TMP/perms/.github/workflows/reusable-tokens.yml" <<'EOF'
+cat > "$TMP/perms/.gitforest/workflows/reusable-tokens.yml" <<'EOF'
 name: TokenCallee
 on:
   workflow_call:

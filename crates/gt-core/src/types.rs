@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// A repository on the GitForest network.
+/// A repository on the gitforest network.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepoMetadata {
     pub owner: PeerId,

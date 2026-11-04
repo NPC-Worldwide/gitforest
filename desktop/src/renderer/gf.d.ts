@@ -1,8 +1,8 @@
-import type { IGitForestAPI } from '../main/preload';
+import type { IGitforestAPI } from '../main/preload';
 
 declare global {
   interface Window {
-    gf: IGitForestAPI;
+    gf: IGitforestAPI;
   }
 }
 

@@ -12,7 +12,7 @@ pub struct IfContext {
     pub inputs: HashMap<String, String>,
     pub matrix: HashMap<String, String>,
     pub env: HashMap<String, String>,
-    pub github: HashMap<String, String>,
+    pub gitforest: HashMap<String, String>,
     pub steps: HashMap<String, HashMap<String, String>>,
 }
 
@@ -417,7 +417,7 @@ fn parse_expr(input: &str) -> Option<Expr> {
     Some(expr)
 }
 
-fn unwrap_github_expression(input: &str) -> &str {
+fn unwrap_gitforest_expression(input: &str) -> &str {
     let trimmed = input.trim();
     if let Some(inner) = trimmed
         .strip_prefix("${{")
@@ -445,7 +445,7 @@ fn resolve_deref(parts: &[String], ctx: &IfContext) -> Val {
         Some("inputs") if parts.len() == 2 => get(&ctx.inputs, &parts[1]),
         Some("matrix") if parts.len() == 2 => get(&ctx.matrix, &parts[1]),
         Some("env") if parts.len() == 2 => get(&ctx.env, &parts[1]),
-        Some("github") if parts.len() == 2 => get(&ctx.github, &parts[1]),
+        Some("gitforest") if parts.len() == 2 => get(&ctx.gitforest, &parts[1]),
         Some("steps") if parts.len() == 3 && parts[2] == "outcome" => ctx
             .steps
             .get(&parts[1])
@@ -529,12 +529,12 @@ fn compare(a: &Expr, b: &Expr, ctx: &IfContext, pick: impl Fn(std::cmp::Ordering
 }
 
 pub fn is_valid(input: &str) -> bool {
-    let inner = unwrap_github_expression(input);
+    let inner = unwrap_gitforest_expression(input);
     !inner.is_empty() && parse_expr(inner).is_some()
 }
 
 pub fn mentions_cancelled(input: &str) -> bool {
-    let inner = unwrap_github_expression(input);
+    let inner = unwrap_gitforest_expression(input);
     parse_expr(inner).is_some_and(|e| mentions_call(&e, "cancelled"))
 }
 
@@ -555,7 +555,7 @@ fn mentions_call(expr: &Expr, name: &str) -> bool {
 }
 
 pub fn eval(input: &str, ctx: &IfContext) -> bool {
-    let inner = unwrap_github_expression(input);
+    let inner = unwrap_gitforest_expression(input);
     if inner.is_empty() {
         return false;
     }
@@ -571,7 +571,7 @@ fn quote_literal(value: &str) -> String {
 fn deref_root_name(parts: &[String]) -> Option<&str> {
     match parts.first().map(String::as_str) {
         // secrets.* never substitutes anywhere: conditions must not leak secrets.
-        Some("needs" | "inputs" | "matrix" | "env" | "github" | "steps") => {
+        Some("needs" | "inputs" | "matrix" | "env" | "gitforest" | "steps") => {
             parts.first().map(String::as_str)
         }
         _ => None,
@@ -579,14 +579,18 @@ fn deref_root_name(parts: &[String]) -> Option<&str> {
 }
 
 pub fn substitute_known(input: &str, ctx: &IfContext) -> String {
-    substitute_roots(input, ctx, &["needs", "inputs", "matrix", "env", "github"])
+    substitute_roots(
+        input,
+        ctx,
+        &["needs", "inputs", "matrix", "env", "gitforest"],
+    )
 }
 
 pub fn substitute_all(input: &str, ctx: &IfContext) -> String {
     substitute_roots_quoted(
         input,
         ctx,
-        &["needs", "inputs", "matrix", "env", "github", "steps"],
+        &["needs", "inputs", "matrix", "env", "gitforest", "steps"],
         true,
     )
 }
@@ -595,7 +599,7 @@ pub fn substitute_all_raw(input: &str, ctx: &IfContext) -> String {
     substitute_roots_quoted(
         input,
         ctx,
-        &["needs", "inputs", "matrix", "env", "github", "steps"],
+        &["needs", "inputs", "matrix", "env", "gitforest", "steps"],
         false,
     )
 }
@@ -755,7 +759,7 @@ fn serialize_atom(expr: &Expr) -> String {
 }
 
 pub fn fold_constants(input: &str) -> String {
-    let inner = unwrap_github_expression(input);
+    let inner = unwrap_gitforest_expression(input);
     let Some(expr) = parse_expr(inner) else {
         return "false".to_string();
     };
@@ -837,13 +841,13 @@ fn shell_single_quote(s: &str) -> String {
 }
 
 pub fn mentions_steps(input: &str) -> bool {
-    let inner = unwrap_github_expression(input);
+    let inner = unwrap_gitforest_expression(input);
     parse_expr(inner).is_some_and(|e| mentions_deref_root(&e, "steps"))
 }
 
 pub fn steps_refs(input: &str) -> Vec<String> {
     let mut out = Vec::new();
-    if let Some(expr) = parse_expr(unwrap_github_expression(input)) {
+    if let Some(expr) = parse_expr(unwrap_gitforest_expression(input)) {
         collect_steps_refs(&expr, &mut out);
     }
     out.sort();
@@ -897,7 +901,7 @@ fn collect_steps_refs(expr: &Expr, out: &mut Vec<String>) {
 }
 
 pub fn compile_shell_guard(input: &str) -> Option<String> {
-    let inner = unwrap_github_expression(input);
+    let inner = unwrap_gitforest_expression(input);
     let expr = simplify(parse_expr(inner)?);
     compile_shell_node(&expr)
 }
@@ -998,7 +1002,7 @@ mod tests {
             inputs: HashMap::from([("env".to_string(), "prod".to_string())]),
             matrix: HashMap::from([("os".to_string(), "linux".to_string())]),
             env: HashMap::from([("MODE".to_string(), "fast".to_string())]),
-            github: HashMap::from([("event_name".to_string(), "push".to_string())]),
+            gitforest: HashMap::from([("event_name".to_string(), "push".to_string())]),
             steps: HashMap::new(),
         }
     }
@@ -1027,7 +1031,7 @@ mod tests {
     }
 
     #[test]
-    fn github_case_insensitive_equality() {
+    fn gitforest_case_insensitive_equality() {
         let c = ctx();
         assert!(eval("inputs.env == 'PROD'", &c));
         assert!(eval("'AbC' == 'aBc'", &c));

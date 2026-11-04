@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
-export interface IGitForestAPI {
+export interface IGitforestAPI {
   api: (route: string, opts?: { method?: string; body?: unknown }) => Promise<any>;
   daemonState: () => Promise<{ running: boolean; owned: boolean }>;
   daemonStart: () => Promise<{ ok: boolean; reason?: string }>;
@@ -62,10 +62,10 @@ contextBridge.exposeInMainWorld('gf', {
   },
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-} as IGitForestAPI);
+} as IGitforestAPI);
 
 declare global {
   interface Window {
-    gf: IGitForestAPI;
+    gf: IGitforestAPI;
   }
 }

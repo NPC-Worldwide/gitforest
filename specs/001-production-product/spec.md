@@ -1,9 +1,9 @@
-# Feature Specification: GitForest Production Product (Desktop Client + Binary Release)
+# Feature Specification: gitforest Production Product (Desktop Client + Binary Release)
 
 **Feature**: 001-production-product
 **Created**: 2026-10-23
 **Status**: Draft
-**Input**: Ship GitForest as a real product: raw binaries + minimal desktop GUI with GitHub-Desktop-style repo management, analytics, profile/identity management, machine management, and account sign-in.
+**Input**: Ship gitforest as a real product: raw binaries + minimal desktop GUI with desktop-client-style repo management, analytics, profile/identity management, machine management, and account sign-in.
 
 ---
 
@@ -25,7 +25,7 @@ Known gaps to close (from code + .claude/plan.md):
 - No analytics (transfer stats raw, no history/persistence)
 - Account/identity UX is a CLI command; key backup/restore doesn't exist
 - Payments stubbed; `peak_cpu_percent` TODO; compute job status CLI TODOs
-- GitHub releases: workflows exist but no tagged release cut yet
+- gitforest releases: workflows exist but no tagged release cut yet
 - Bootstrap network not yet live
 
 ---
@@ -34,7 +34,7 @@ Known gaps to close (from code + .claude/plan.md):
 
 ### US-1 — Install & first-run onboarding (P1)
 
-A developer downloads the binary (or runs install.sh), launches the GitForest desktop app.
+A developer downloads the binary (or runs install.sh), launches the gitforest desktop app.
 The app detects the daemon isn't running, starts it, generates an Ed25519 identity, and presents a
 guided first-run: shows peer ID, offers key backup (export passphrase-encrypted key file), suggests
 seeding a first repo or joining the network by cloning the demo repo.
@@ -53,13 +53,13 @@ touching a terminal.
 
 ---
 
-### US-2 — Repository management, GitHub-Desktop style (P1)
+### US-2 — Repository management, desktop-client style (P1)
 
 User sees all hosted repos in the desktop client with: branches, commit log, working-copy status,
 clone URL copy button, seeding toggle, ACL viewer. Can add an existing local repo or create a new
 one from the GUI. Incoming merge requests and patches surface as notifications with accept/reject.
 
-**Why P1**: This is the daily-driver loop — the GitHub Desktop parity ask.
+**Why P1**: This is the daily-driver loop — the desktop-client parity ask.
 
 **Independent Test**: With daemon running, create a repo in the app, commit via normal git,
 see commit appear in app log; receive a merge request from a second peer, review diff summary,
@@ -116,17 +116,17 @@ timeline with correct byte counts; restart daemon → history survives.
 ### US-5 — Machine & daemon management (P2)
 
 "Computer" page: daemon start/stop/restart, port configuration, data directory usage, log viewer
-(tailed from daemon), update checker (compares local version to latest GitHub release),
+(tailed from daemon), update checker (compares local version to latest gitforest release),
 config editor for a safe subset of config.toml with validation.
 
 **Why P2**: Power-user feature; required for a self-service product ("way to manage their computer").
 
 **Independent Test**: From the app only, stop the daemon, change API port, restart, and the client
-reconnects on the new port; update banner appears when a newer GitHub release exists (mockable).
+reconnects on the new port; update banner appears when a newer gitforest release exists (mockable).
 
 **Acceptance Scenarios**:
 1. **Given** app's daemon running, **When** user clicks Stop, **Then** graceful SIGTERM, status shows "stopped" within 3s
-2. **Given** a newer release on GitHub, **When** update check runs, **Then** banner shows version + instructions
+2. **Given** a newer release on gitforest, **When** update check runs, **Then** banner shows version + instructions
 3. **Given** invalid port entered, **When** saving config, **Then** validation error shows, daemon untouched
 
 ---

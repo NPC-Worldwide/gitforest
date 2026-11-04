@@ -29,8 +29,8 @@ fail() {
 echo "== gitforest cross-repo reusable workflow proof =="
 (cd "$ROOT" && cargo build --release -p gt-daemon) || fail "build failed"
 
-mkdir -p "$TMP/home" "$TMP/data" "$TMP/shared/.github/workflows" "$TMP/caller/.github/workflows"
-cat > "$TMP/shared/.github/workflows/build.yml" <<'EOF'
+mkdir -p "$TMP/home" "$TMP/data" "$TMP/shared/.gitforest/workflows" "$TMP/caller/.gitforest/workflows"
+cat > "$TMP/shared/.gitforest/workflows/build.yml" <<'EOF'
 name: SharedBuild
 on:
   workflow_call:
@@ -63,8 +63,8 @@ git -C "$TMP/shared" init -q --initial-branch=main
 git -C "$TMP/shared" config user.email t@t; git -C "$TMP/shared" config user.name t
 git -C "$TMP/shared" add .; git -C "$TMP/shared" commit -qm init
 git -C "$TMP/shared" tag v1
-mkdir -p "$TMP/shared/.github/actions/tagline"
-cat > "$TMP/shared/.github/actions/tagline/action.yml" <<'EOF'
+mkdir -p "$TMP/shared/.gitforest/actions/tagline"
+cat > "$TMP/shared/.gitforest/actions/tagline/action.yml" <<'EOF'
 name: Tagline
 inputs:
   text:
@@ -76,18 +76,18 @@ runs:
 EOF
 git -C "$TMP/shared" add .; git -C "$TMP/shared" commit -qm "composite action"
 
-cat > "$TMP/caller/.github/workflows/ci.yml" <<'EOF'
+cat > "$TMP/caller/.gitforest/workflows/ci.yml" <<'EOF'
 name: Caller
 on:
   push:
 jobs:
   hello:
-    uses: shared/.github/workflows/build.yml@main
+    uses: shared/.gitforest/workflows/build.yml@main
     with:
       greeting: hi
     secrets: inherit
   pinned:
-    uses: shared/.github/workflows/build.yml@v1
+    uses: shared/.gitforest/workflows/build.yml@v1
     with:
       greeting: yo
     secrets: inherit
@@ -129,14 +129,14 @@ jobs:
     ram-mb: 256
     disk-mb: 512
     steps:
-      - uses: shared/.github/actions/tagline/action.yml@main
+      - uses: shared/.gitforest/actions/tagline/action.yml@main
         with:
           text: remote
     artifacts:
       - tagline.txt
 EOF
-mkdir -p "$TMP/caller/.github/actions/prefix"
-cat > "$TMP/caller/.github/actions/prefix/action.yml" <<'EOF'
+mkdir -p "$TMP/caller/.gitforest/actions/prefix"
+cat > "$TMP/caller/.gitforest/actions/prefix/action.yml" <<'EOF'
 name: Prefix
 inputs:
   text:
@@ -146,15 +146,15 @@ runs:
   steps:
     - run: echo "prefix-${{ inputs.text }}" > prefixed.txt
 EOF
-cat > "$TMP/caller/.github/workflows/bad.yml" <<'EOF'
+cat > "$TMP/caller/.gitforest/workflows/bad.yml" <<'EOF'
 name: BadCall
 on:
   workflow_dispatch:
 jobs:
   hello:
-    uses: nosuch/.github/workflows/build.yml@main
+    uses: nosuch/.gitforest/workflows/build.yml@main
 EOF
-cat > "$TMP/caller/.github/workflows/fail.yml" <<'EOF'
+cat > "$TMP/caller/.gitforest/workflows/fail.yml" <<'EOF'
 name: Flaky
 on:
   workflow_dispatch:
@@ -174,7 +174,7 @@ jobs:
     steps:
       - run: exit 1
 EOF
-cat > "$TMP/caller/.github/workflows/shell.yml" <<'EOF'
+cat > "$TMP/caller/.gitforest/workflows/shell.yml" <<'EOF'
 name: ShellSel
 on:
   workflow_dispatch:
@@ -191,7 +191,7 @@ jobs:
     artifacts:
       - shell.txt
 EOF
-cat > "$TMP/caller/.github/workflows/env.yml" <<'EOF'
+cat > "$TMP/caller/.gitforest/workflows/env.yml" <<'EOF'
 name: EnvPrec
 on:
   workflow_dispatch:
@@ -214,7 +214,7 @@ jobs:
     artifacts:
       - env.txt
 EOF
-cat > "$TMP/caller/.github/workflows/sched.yml" <<'EOF'
+cat > "$TMP/caller/.gitforest/workflows/sched.yml" <<'EOF'
 name: Heartbeat
 on:
   schedule:
@@ -230,7 +230,7 @@ jobs:
     artifacts:
       - beat.txt
 EOF
-cat > "$TMP/caller/.github/workflows/downstream.yml" <<'EOF'
+cat > "$TMP/caller/.gitforest/workflows/downstream.yml" <<'EOF'
 name: Chained
 on:
   workflow_run:

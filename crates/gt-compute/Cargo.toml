@@ -3,7 +3,7 @@ name = "gt-compute"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "GitForest compute marketplace: P2P CI/CD with crypto payments"
+description = "gitforest compute marketplace: P2P CI/CD with crypto payments"
 
 [dependencies]
 gt-core = { path = "../gt-core" }

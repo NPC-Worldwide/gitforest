@@ -3,7 +3,7 @@ name = "gt-web"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "GitForest web UI assets and serving"
+description = "gitforest web UI assets and serving"
 
 [dependencies]
 rust-embed = { version = "8", features = ["debug-embed"] }

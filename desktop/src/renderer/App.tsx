@@ -43,7 +43,7 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
         {state === 'loading' && (
           <div className="flex-1 flex items-center justify-center">
-            <div className="theme-text-muted">Loading GitForest…</div>
+            <div className="theme-text-muted">Loading gitforest…</div>
           </div>
         )}
         {state === 'daemon-down' && <DaemonGate onReady={check} needsIdentity={!identityExists} />}

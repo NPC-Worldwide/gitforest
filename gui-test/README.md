@@ -1,4 +1,4 @@
-# GUI smoke test for the GitForest desktop app
+# GUI smoke test for the gitforest desktop app
 
 Drives the real Electron app through Chrome DevTools Protocol: no new
 dependencies, just Node 22 (`fetch` + `WebSocket`) and a display.

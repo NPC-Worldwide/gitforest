@@ -3,7 +3,7 @@ name = "gt-transport"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "GitForest transport layer: P2P engine and git protocol bridge"
+description = "gitforest transport layer: P2P engine and git protocol bridge"
 
 [dependencies]
 gt-core = { path = "../gt-core" }

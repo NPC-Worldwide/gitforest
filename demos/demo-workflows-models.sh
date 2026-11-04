@@ -127,8 +127,8 @@ echo "peer worker auto-detected its GPU via nvidia-smi"
 git init -q --initial-branch=main "$TMP/repo"
 git -C "$TMP/repo" config user.email "demo@test.com"
 git -C "$TMP/repo" config user.name "Demo"
-mkdir -p "$TMP/repo/.github/workflows"
-cat > "$TMP/repo/.github/workflows/ci.yml" <<'EOF'
+mkdir -p "$TMP/repo/.gitforest/workflows"
+cat > "$TMP/repo/.gitforest/workflows/ci.yml" <<'EOF'
 name: CI
 on:
   push:
@@ -157,7 +157,7 @@ jobs:
       - name: Test
         run: echo testing
 EOF
-cat > "$TMP/repo/.github/workflows/release.yml" <<'EOF'
+cat > "$TMP/repo/.gitforest/workflows/release.yml" <<'EOF'
 name: Release
 on:
   push:
@@ -171,7 +171,7 @@ jobs:
     steps:
       - run: echo release packaging ok
 EOF
-cat > "$TMP/repo/.github/workflows/inputs.yml" <<'EOF'
+cat > "$TMP/repo/.gitforest/workflows/inputs.yml" <<'EOF'
 name: Inputs
 on:
   workflow_dispatch:
@@ -391,7 +391,7 @@ echo "cli dispatch --input works"
 HOME="$TMP/home-dev" "$BIN" --config "$TMP/dev.toml" workflow dispatch demo --workflow release.yml --tag v9.9.9-cli 2>&1 | grep -q "Release" || fail "cli dispatch --tag failed"
 echo "cli dispatch --tag works"
 
-cat > "$TMP/repo/.github/workflows/concurrency.yml" <<'EOF'
+cat > "$TMP/repo/.gitforest/workflows/concurrency.yml" <<'EOF'
 name: Deploy
 on:
   workflow_dispatch:
@@ -402,7 +402,7 @@ jobs:
     ram-mb: 256
     disk-mb: 512
     concurrency:
-      group: deploy-${{ github.ref_name }}
+      group: deploy-${{ gitforest.ref_name }}
       cancel-in-progress: true
     steps:
       - run: echo deploy ok
@@ -448,7 +448,7 @@ done
 [ "$CC_DONE" = "yes" ] || fail "concurrency run never completed (last summary: $CC_SUM)"
 echo "surviving concurrency run completed"
 
-cat > "$TMP/repo/.github/workflows/prod.yml" <<'EOF'
+cat > "$TMP/repo/.gitforest/workflows/prod.yml" <<'EOF'
 name: ProdDeploy
 on:
   workflow_dispatch:
@@ -548,7 +548,7 @@ done
 [ "$ENV_DONE" = "yes" ] || fail "env run never completed (last summary: $ENV_SUM)"
 echo "approved protected env run completed"
 
-cat > "$TMP/repo/.github/workflows/coe.yml" <<'EOF'
+cat > "$TMP/repo/.gitforest/workflows/coe.yml" <<'EOF'
 name: Tolerant
 on:
   workflow_dispatch:
@@ -625,7 +625,7 @@ print("swallowed step artifact:", body.decode().strip())
 PYEOF
 echo "step and job continue-on-error held: flaky completed, doomed failed, downstream ran"
 
-cat > "$TMP/repo/.github/workflows/cache.yml" <<'EOF'
+cat > "$TMP/repo/.gitforest/workflows/cache.yml" <<'EOF'
 name: CacheDemo
 on:
   workflow_dispatch:
@@ -713,7 +713,7 @@ print("run1:", first.decode().strip(), "run2:", second.decode().strip())
 PYEOF
 echo "cache shared across runs: first built fresh, second restored"
 
-cat > "$TMP/repo/.github/workflows/matrix.yml" <<'EOF'
+cat > "$TMP/repo/.gitforest/workflows/matrix.yml" <<'EOF'
 name: Matrix
 on:
   workflow_dispatch:
@@ -787,7 +787,7 @@ print("matrix statuses:", statuses)
 PYEOF
 echo "fail-fast cancelled the surviving matrix sibling; failure() and cancelled() handlers completed; working-directory step ran"
 
-cat > "$TMP/repo/.github/workflows/gates.yml" <<'EOF'
+cat > "$TMP/repo/.gitforest/workflows/gates.yml" <<'EOF'
 name: Gates
 on:
   workflow_dispatch:
@@ -880,7 +880,7 @@ print("gates statuses:", statuses, "| step-if + needs-outputs gating proven")
 PYEOF
 echo "if-expressions gated jobs and steps: deploy ran on outputs match, muted skipped, prod step excluded"
 
-cat > "$TMP/repo/.github/workflows/services.yml" <<'EOF'
+cat > "$TMP/repo/.gitforest/workflows/services.yml" <<'EOF'
 name: Services
 on:
   workflow_dispatch:
@@ -978,7 +978,7 @@ echo "docker worker resolved the db sidecar by name and ran a live psql query"
 [ -z "$(docker ps -aq --filter 'name=gf-svc-' || true)" ] || fail "service containers leaked"
 echo "service networks and containers torn down cleanly"
 
-cat > "$TMP/repo/.github/workflows/container.yml" <<'EOF'
+cat > "$TMP/repo/.gitforest/workflows/container.yml" <<'EOF'
 name: ContainerDemo
 on:
   workflow_dispatch:

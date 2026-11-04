@@ -782,7 +782,7 @@ async fn start_peer_gossip(state: Arc<RwLock<AppState>>) {
     }
 }
 
-/// Decide whether a newly discovered GitForest peer deserves a DHT compute
+/// Decide whether a newly discovered gitforest peer deserves a DHT compute
 /// offer lookup. Never queries self, and throttles repeat discoveries of
 /// the same peer to one lookup per 15 minutes so mDNS/identify
 /// rediscovery storms cannot spam the DHT.
@@ -809,8 +809,8 @@ fn offer_query_due(
 }
 
 /// Consume DHT events and add discovered peer addresses to known_peers.
-/// If the identify protocol has provided a GitForest peer ID, tag the multiaddr
-/// with `/gf/{gitforest_peer_id}` so the remote API can resolve by GitForest ID.
+/// If the identify protocol has provided a gitforest peer ID, tag the multiaddr
+/// with `/gf/{gitforest_peer_id}` so the remote API can resolve by gitforest ID.
 async fn consume_dht_events(dht: &mut DhtNode, state: Arc<RwLock<AppState>>) {
     let mut offer_queries: std::collections::HashMap<String, std::time::Instant> =
         std::collections::HashMap::new();
@@ -1213,7 +1213,7 @@ fn score_peer_addr(host: &str, p2p_port: u16, _api_port: u16) -> i32 {
     if !is_private {
         score += 50;
     }
-    // Prefer the well-known GitForest P2P listen port (9418) and avoid ephemeral source ports.
+    // Prefer the well-known gitforest P2P listen port (9418) and avoid ephemeral source ports.
     if p2p_port == 9418 {
         score += 30;
     } else if p2p_port > 0 && p2p_port < 32768 {
@@ -1234,7 +1234,7 @@ fn our_api_multiaddr(config: &Config, identity: &Identity) -> Option<String> {
 }
 
 /// Probe each configured bootstrap peer and add it to known_peers with its
-/// GitForest peer ID tag so the remote API proxy can resolve it immediately.
+/// gitforest peer ID tag so the remote API proxy can resolve it immediately.
 async fn seed_bootstrap_peers(state: Arc<RwLock<AppState>>) {
     let (bootstrap_peers, client) = {
         let state = state.read().await;
@@ -1284,7 +1284,7 @@ async fn seed_bootstrap_peers(state: Arc<RwLock<AppState>>) {
         }
 
         let Some(peer_id) = peer_id else {
-            tracing::warn!("Could not resolve GitForest peer ID for bootstrap peer {peer}");
+            tracing::warn!("Could not resolve gitforest peer ID for bootstrap peer {peer}");
             continue;
         };
 
@@ -2230,7 +2230,7 @@ pub(crate) fn prune_stale_known_peers(state: &mut AppState) {
     tracing::info!("Pruned {} stale peer entries", stale.len());
 }
 
-/// Tag a bootstrap multiaddr with the GitForest peer ID that answered there.
+/// Tag a bootstrap multiaddr with the gitforest peer ID that answered there.
 ///
 /// The exchanger reached the responder over this exact address, so the tagged
 /// entry is dialable by construction even when the responder has no
@@ -3761,8 +3761,8 @@ async fn remote_push(
         let client = crate::fetch::peer_client().ok_or(StatusCode::BAD_GATEWAY)?;
         let mut request = client
             .post(&url)
-            .header("X-GitForest-Push-Refs", ref_b64)
-            .header("X-GitForest-Push-Sig", sig_b64)
+            .header("X-gitforest-Push-Refs", ref_b64)
+            .header("X-gitforest-Push-Sig", sig_b64)
             .header("Content-Type", "application/x-git-bundle")
             .body(body);
         if let Some(ref cluster) = state.config.cluster_token {
@@ -7218,6 +7218,9 @@ mod tests {
             ));
             s.gossip_learned.remove(&junk);
             let visible = exchange_visible_peers(&s.known_peers, &s.gossip_learned, public_ip);
+            assert_eq!(visible, vec![real.clone()]);
+            let loopback_ip: std::net::IpAddr = "127.0.0.1".parse().unwrap();
+            let visible = exchange_visible_peers(&s.known_peers, &s.gossip_learned, loopback_ip);
             assert_eq!(visible.len(), 2);
             s.peer_last_seen.insert(
                 junk.clone(),
@@ -8695,7 +8698,7 @@ mod tests {
         let owner = Identity::generate();
         push_test_repo(&state, &tmp, &owner).await;
         let repo_path = tmp.join("repo");
-        let workflows_dir = repo_path.join(".github").join("workflows");
+        let workflows_dir = repo_path.join(".gitforest").join("workflows");
         std::fs::create_dir_all(&workflows_dir).unwrap();
         std::fs::write(
             workflows_dir.join("release.yml"),
@@ -10808,7 +10811,7 @@ jobs:
         repo_name: &str,
     ) -> std::path::PathBuf {
         let repo_path = tmp.join(repo_name);
-        let wf_dir = repo_path.join(".github").join("workflows");
+        let wf_dir = repo_path.join(".gitforest").join("workflows");
         std::fs::create_dir_all(&wf_dir).unwrap();
         std::fs::write(wf_dir.join("ci.yml"), WORKFLOW_YAML).unwrap();
         let owner = state.read().await.identity.peer_id();
@@ -12135,7 +12138,7 @@ jobs:
     async fn test_dispatch_injects_repo_secrets() {
         let (state, tmp, _rx) = test_state("dispatch-secrets");
         let repo_path = tmp.join("demo");
-        let wf_dir = repo_path.join(".github").join("workflows");
+        let wf_dir = repo_path.join(".gitforest").join("workflows");
         std::fs::create_dir_all(&wf_dir).unwrap();
         std::fs::write(
             wf_dir.join("ci.yml"),
@@ -13301,7 +13304,7 @@ jobs:
     #[tokio::test]
     async fn test_workflow_run_chain_fires_once() {
         let (state, tmp, _rx) = test_state("chain");
-        let dir = tmp.join("repo").join(".github").join("workflows");
+        let dir = tmp.join("repo").join(".gitforest").join("workflows");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("first.yml"),
@@ -13373,7 +13376,7 @@ jobs:
     #[tokio::test]
     async fn test_schedule_fires_once_per_slot() {
         let (state, tmp, _rx) = test_state("sched");
-        let dir = tmp.join("repo").join(".github").join("workflows");
+        let dir = tmp.join("repo").join(".gitforest").join("workflows");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("nightly.yml"),

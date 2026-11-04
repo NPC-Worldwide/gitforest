@@ -1,4 +1,4 @@
-# Threat Model: GitForest Pre-Production Security Pass
+# Threat Model: gitforest Pre-Production Security Pass
 
 **Feature**: 002-threat-model
 **Created**: 2026-10-28
@@ -184,7 +184,7 @@ Accepted / Recorded.
   sources must be named volumes (alnum start, `[alnum_.-]`, 128
   max), targets must be absolute container paths without `..`,
   and every published host port is pinned to 127.0.0.1
-  (GitHub-runner semantics; the workflow `ip` field is now
+  (gitforest-runner semantics; the workflow `ip` field is now
   ignored). Violations fail the job before any container exists.
   Proven by four unit tests plus a live two-daemon proof: a hostile
   `/etc` submit failed with no container created while an identical

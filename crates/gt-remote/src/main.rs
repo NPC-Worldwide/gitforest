@@ -416,8 +416,8 @@ fn do_push(peer_id: &str, repo_name: &str, refs: &[String], out: &mut impl Write
     let sig_b64 = sign_push(&identity, repo_name, &ref_b64, &bundle_bytes);
     let response = http_client()
         .post(&url)
-        .header("X-GitForest-Push-Refs", ref_b64)
-        .header("X-GitForest-Push-Sig", sig_b64)
+        .header("X-gitforest-Push-Refs", ref_b64)
+        .header("X-gitforest-Push-Sig", sig_b64)
         .header("Content-Type", "application/x-git-bundle")
         .body(bundle_bytes)
         .send();
@@ -483,7 +483,7 @@ mod tests {
 
     #[test]
     fn test_parse_url_invalid() {
-        assert!(parse_url("https://github.com/foo/bar").is_err());
+        assert!(parse_url("https://gitforest.com/foo/bar").is_err());
         assert!(parse_url("gitforest://no-slash").is_err());
     }
 

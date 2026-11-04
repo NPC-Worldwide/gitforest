@@ -54,7 +54,7 @@ pub enum DhtEvent {
     PeerDiscovered {
         peer_id: String,
         addresses: Vec<Multiaddr>,
-        /// GitForest peer ID (64-char hex public key), if known from identify.
+        /// gitforest peer ID (64-char hex public key), if known from identify.
         gitforest_peer_id: Option<String>,
         /// Peer's HTTP API port, when advertised via the identify agent version.
         api_port: Option<u16>,
@@ -95,7 +95,7 @@ pub const MAX_ESTABLISHED_PER_PEER: u32 = 3;
 
 /// Combined network behaviour for the DHT node.
 #[derive(NetworkBehaviour)]
-struct GitForestBehaviour {
+struct GitforestBehaviour {
     identify: identify::Behaviour,
     kademlia: kad::Behaviour<BoundedStore>,
     mdns: Toggle<mdns::tokio::Behaviour>,
@@ -161,7 +161,7 @@ pub struct DhtNodeSender {
     cmd_tx: mpsc::Sender<DhtCommand>,
 }
 
-/// The DHT node that participates in the GitForest network.
+/// The DHT node that participates in the gitforest network.
 pub struct DhtNode {
     cmd_tx: mpsc::Sender<DhtCommand>,
     event_rx: mpsc::Receiver<DhtEvent>,
@@ -184,7 +184,7 @@ impl DhtNode {
 
     /// Start a new DHT node on the given port, using the provided identity.
     /// The libp2p keypair is derived from the same Ed25519 seed so the DHT
-    /// identity is stable across restarts and matches our GitForest peer ID.
+    /// identity is stable across restarts and matches our gitforest peer ID.
     pub async fn start(
         port: u16,
         api_port: u16,
@@ -253,7 +253,7 @@ impl DhtNode {
                         .with_max_established_incoming(Some(MAX_ESTABLISHED_INCOMING))
                         .with_max_established_per_peer(Some(MAX_ESTABLISHED_PER_PEER)),
                 );
-                Ok(GitForestBehaviour {
+                Ok(GitforestBehaviour {
                     identify,
                     kademlia,
                     mdns,
@@ -441,7 +441,7 @@ impl DhtNode {
                                 info!("DHT listening on {address}");
                             }
                             SwarmEvent::Behaviour(
-                                GitForestBehaviourEvent::Mdns(
+                                GitforestBehaviourEvent::Mdns(
                                     mdns::Event::Discovered(peers)
                                 )
                             ) => {
@@ -463,7 +463,7 @@ impl DhtNode {
                                 }
                             }
                             SwarmEvent::Behaviour(
-                                GitForestBehaviourEvent::Kademlia(
+                                GitforestBehaviourEvent::Kademlia(
                                     kad::Event::OutboundQueryProgressed {
                                         id,
                                         result: kad::QueryResult::GetRecord(query),
@@ -577,7 +577,7 @@ impl DhtNode {
                                 }
                             }
                             SwarmEvent::Behaviour(
-                                GitForestBehaviourEvent::Identify(
+                                GitforestBehaviourEvent::Identify(
                                     identify::Event::Received { peer_id, info, .. }
                                 )
                             ) => {
@@ -590,7 +590,7 @@ impl DhtNode {
                                     }
                                     swarm.behaviour_mut().kademlia.add_address(&peer_id, addr.clone());
                                 }
-                                // Derive GitForest peer ID from the Ed25519 public key, if available.
+                                // Derive gitforest peer ID from the Ed25519 public key, if available.
                                 let gf_peer_id = info
                                     .public_key
                                     .try_into_ed25519()

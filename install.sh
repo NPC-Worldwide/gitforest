@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-REPO="NPC-Worldwide/gitforest"
 BUCKET="https://storage.googleapis.com/gitforest-executables"
 
 
@@ -30,33 +29,22 @@ else
     exit 1
 fi
 
-# Determine the latest version: GCS manifest first (fast, no rate limits),
-# then fall back to the GitHub releases API.
+# Read the latest version from the release manifest (used for display only;
+# the download URL below is a stable per-platform path).
 LATEST=""
 URL="$BUCKET/$PLATFORM/$ASSET"
 if command -v curl >/dev/null 2>&1; then
     LATEST=$(curl -fsSL "$BUCKET/manifest.json" 2>/dev/null | grep '"version"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || true)
 fi
 if [ -z "$LATEST" ]; then
-    LATEST=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-    if [ -n "$LATEST" ]; then
-        URL="https://github.com/$REPO/releases/download/$LATEST/$ASSET"
-    fi
-fi
-if [ -z "$LATEST" ]; then
-    echo "Failed to find latest release"
-    exit 1
+    LATEST="latest"
 fi
 
-echo "Installing GitForest $LATEST for $OS/$ARCH..."
+echo "Installing gitforest $LATEST for $OS/$ARCH..."
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-if ! curl -fsSL "$URL" -o "$TMPDIR/$ASSET" 2>/dev/null; then
-    echo "GCS download failed, falling back to GitHub releases..."
-    URL="https://github.com/$REPO/releases/download/$LATEST/$ASSET"
-    curl -fsSL "$URL" -o "$TMPDIR/$ASSET"
-fi
+curl -fsSL "$URL" -o "$TMPDIR/$ASSET"
 
 tar xzf "$TMPDIR/$ASSET" -C "$TMPDIR"
 
@@ -73,8 +61,8 @@ fi
 
 # Link the desktop app onto PATH when it is installed outside a package
 # (the .deb handles this via its after-install script).
-if [ -x /opt/GitForest/gitforest-desktop ]; then
-    ln -sf /opt/GitForest/gitforest-desktop "$HOME/.local/bin/gitforest-desktop"
+if [ -x /opt/gitforest/gitforest-desktop ]; then
+    ln -sf /opt/gitforest/gitforest-desktop "$HOME/.local/bin/gitforest-desktop"
     echo "Linked gitforest-desktop onto PATH."
 fi
 
@@ -84,7 +72,7 @@ if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
     echo "Added ~/.local/bin to PATH in .bashrc. Run 'source ~/.bashrc' or restart your shell."
 fi
 
-echo "GitForest $LATEST installed."
+echo "gitforest $LATEST installed."
 
 echo "Run: gitforest --help"
 echo "Alias: gtfo --help"

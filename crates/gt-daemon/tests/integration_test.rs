@@ -956,8 +956,8 @@ async fn test_two_machine_simulation() {
         .post(format!(
             "http://127.0.0.1:17879/api/remote/{a_peer_id}/myrepo/push"
         ))
-        .header("X-GitForest-Push-Refs", ref_b64)
-        .header("X-GitForest-Push-Sig", sig_b64)
+        .header("X-gitforest-Push-Refs", ref_b64)
+        .header("X-gitforest-Push-Sig", sig_b64)
         .header("Content-Type", "application/x-git-bundle")
         .body(bundle_bytes.clone())
         .send()
@@ -1010,8 +1010,8 @@ async fn test_two_machine_simulation() {
         .post(format!(
             "http://127.0.0.1:17879/api/remote/{a_peer_id}/myrepo/push"
         ))
-        .header("X-GitForest-Push-Refs", ref_b64_2)
-        .header("X-GitForest-Push-Sig", sig_b64_2)
+        .header("X-gitforest-Push-Refs", ref_b64_2)
+        .header("X-gitforest-Push-Sig", sig_b64_2)
         .header("Content-Type", "application/x-git-bundle")
         .body(bundle_bytes)
         .send()
@@ -1328,8 +1328,8 @@ async fn test_ten_device_simulation() {
             "http://127.0.0.1:{}/api/remote/{owner_peer_id}/myrepo/push",
             pusher.api_port
         ))
-        .header("X-GitForest-Push-Refs", ref_b64.clone())
-        .header("X-GitForest-Push-Sig", sig_b64.clone())
+        .header("X-gitforest-Push-Refs", ref_b64.clone())
+        .header("X-gitforest-Push-Sig", sig_b64.clone())
         .header("Content-Type", "application/x-git-bundle")
         .body(bundle_bytes.clone())
         .send()
@@ -1365,8 +1365,8 @@ async fn test_ten_device_simulation() {
             "http://127.0.0.1:{}/api/remote/{owner_peer_id}/myrepo/push",
             pusher.api_port
         ))
-        .header("X-GitForest-Push-Refs", ref_b64)
-        .header("X-GitForest-Push-Sig", sig_b64)
+        .header("X-gitforest-Push-Refs", ref_b64)
+        .header("X-gitforest-Push-Sig", sig_b64)
         .header("Content-Type", "application/x-git-bundle")
         .body(bundle_bytes.clone())
         .send()
@@ -1467,8 +1467,8 @@ async fn test_ten_device_simulation() {
             "http://127.0.0.1:{}/api/remote/{owner_peer_id}/myrepo/push",
             pusher.api_port
         ))
-        .header("X-GitForest-Push-Refs", ref_b64_3)
-        .header("X-GitForest-Push-Sig", sig_b64_3)
+        .header("X-gitforest-Push-Refs", ref_b64_3)
+        .header("X-gitforest-Push-Sig", sig_b64_3)
         .header("Content-Type", "application/x-git-bundle")
         .body(new_bundle_bytes)
         .send()

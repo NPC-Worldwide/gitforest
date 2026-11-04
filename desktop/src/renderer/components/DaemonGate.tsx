@@ -37,11 +37,11 @@ export default function DaemonGate({ onReady, needsIdentity }: { onReady: () => 
     <div className="flex-1 flex items-center justify-center">
       <div className="w-96 theme-bg-secondary rounded-lg border theme-border p-8 text-center">
         <Trees size={40} className="text-emerald-500 mx-auto mb-4" />
-        <h2 className="text-lg font-semibold theme-text-primary mb-2">{needsIdentity ? 'Welcome to GitForest' : 'Daemon not running'}</h2>
+        <h2 className="text-lg font-semibold theme-text-primary mb-2">{needsIdentity ? 'Welcome to gitforest' : 'Daemon not running'}</h2>
         <p className="text-sm theme-text-muted mb-6">
           {needsIdentity
             ? 'First launch: create your Ed25519 identity and start the daemon to join the P2P network.'
-            : 'GitForest needs its daemon to talk to the P2P network. Start it to continue.'}
+            : 'gitforest needs its daemon to talk to the P2P network. Start it to continue.'}
         </p>
         {error && (
           <div className="flex items-start gap-2 text-left text-xs text-red-400 bg-red-950/40 border border-red-900 rounded p-3 mb-4">

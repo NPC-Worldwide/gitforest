@@ -95,7 +95,7 @@ pub fn event_name_branch(event: &WorkflowEvent) -> (String, String) {
     }
 }
 
-pub fn github_context(
+pub fn gitforest_context(
     event: &WorkflowEvent,
     repo_name: &str,
     workflow_name: &str,
@@ -140,20 +140,20 @@ pub fn github_context(
     ctx
 }
 
-fn reduce_github_conditions(
+fn reduce_gitforest_conditions(
     job: &mut ComputeJob,
-    github: &std::collections::HashMap<String, String>,
+    gitforest: &std::collections::HashMap<String, String>,
 ) {
     let ctx = gt_compute::ifexpr::IfContext {
-        github: github.clone(),
+        gitforest: gitforest.clone(),
         ..Default::default()
     };
     if let gt_compute::job::RunCondition::Expr(raw) = &mut job.run_if {
-        *raw = gt_compute::ifexpr::substitute_roots(raw, &ctx, &["github"]);
+        *raw = gt_compute::ifexpr::substitute_roots(raw, &ctx, &["gitforest"]);
     }
     for step in &mut job.job_config.steps {
         if let gt_compute::job::RunCondition::Expr(raw) = &mut step.condition {
-            *raw = gt_compute::ifexpr::substitute_roots(raw, &ctx, &["github"]);
+            *raw = gt_compute::ifexpr::substitute_roots(raw, &ctx, &["gitforest"]);
         }
     }
 }
@@ -177,7 +177,7 @@ fn reduce_dispatch_conditions(job: &mut ComputeJob) {
 
 fn root_condition_holds(
     job: &ComputeJob,
-    github: &std::collections::HashMap<String, String>,
+    gitforest: &std::collections::HashMap<String, String>,
 ) -> bool {
     let cond = match &job.run_if {
         gt_compute::job::RunCondition::Expr(raw) => raw.clone(),
@@ -188,7 +188,7 @@ fn root_condition_holds(
         inputs: job.dispatch_inputs.clone(),
         matrix: job.matrix.clone(),
         env: job.job_config.env.clone(),
-        github: github.clone(),
+        gitforest: gitforest.clone(),
         ..Default::default()
     };
     gt_compute::ifexpr::eval(&cond, &ctx)
@@ -601,23 +601,23 @@ pub fn trigger_workflows(
             }
         }
         let run_id = uuid::Uuid::new_v4().to_string();
-        let github = github_context(event, repo_name, &label, commit_sha, &run_id);
+        let gitforest = gitforest_context(event, repo_name, &label, commit_sha, &run_id);
         let mut job_ids = Vec::new();
         for (job, created_job) in ordered.iter().zip(made.iter_mut()) {
             created_job.concurrency_group =
-                workflow::substitute_github(&job.concurrency_group, &github);
+                workflow::substitute_gitforest(&job.concurrency_group, &gitforest);
             created_job.cancel_in_progress = job.cancel_in_progress;
-            created_job.environment = workflow::substitute_github(&job.environment, &github);
+            created_job.environment = workflow::substitute_gitforest(&job.environment, &gitforest);
             created_job.environment_url =
-                workflow::substitute_github(&job.environment_url, &github);
+                workflow::substitute_gitforest(&job.environment_url, &gitforest);
             created_job.continue_on_error = job.continue_on_error;
             created_job.max_parallel = job.max_parallel;
             created_job.env_approval_pending = !created_job.environment.is_empty()
                 && protected_envs.contains(&created_job.environment);
-            reduce_github_conditions(created_job, &github);
+            reduce_gitforest_conditions(created_job, &gitforest);
             if job.needs.is_empty() {
                 reduce_dispatch_conditions(created_job);
-                if root_condition_holds(created_job, &github) {
+                if root_condition_holds(created_job, &gitforest) {
                     created_job.status = JobStatus::Pending;
                 } else {
                     created_job.status = JobStatus::Cancelled;
@@ -796,7 +796,7 @@ mod tests {
 
     fn git_repo_with_workflow(yaml: &str) -> std::path::PathBuf {
         let root = std::env::temp_dir().join(format!("gf_trigger_{}", uuid::Uuid::new_v4()));
-        let dir = root.join(".github").join("workflows");
+        let dir = root.join(".gitforest").join("workflows");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("ci.yml"), yaml).unwrap();
         Command::new("git")
@@ -833,7 +833,7 @@ mod tests {
     }
 
     fn git_repo_with_committed_workflow(yaml: &str, filename: &str) -> std::path::PathBuf {
-        git_repo_with_committed_files(&[(&format!(".github/workflows/{filename}"), yaml)])
+        git_repo_with_committed_files(&[(&format!(".gitforest/workflows/{filename}"), yaml)])
     }
 
     const YAML: &str = r#"
@@ -876,7 +876,7 @@ jobs:
     steps:
       - run: echo muted
   vocal:
-    if: github.event_name == 'push'
+    if: gitforest.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - run: echo vocal
@@ -1312,7 +1312,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo hi
-        if: github.event_name == 'workflow_dispatch'
+        if: gitforest.event_name == 'workflow_dispatch'
 "#;
         let root = git_repo_with_workflow(yaml);
         let identity = Identity::generate();
@@ -1561,7 +1561,7 @@ jobs:
       - run: echo ${{ inputs.greeting }}
 "#;
         let root = git_repo_with_workflow(caller);
-        let dir = root.join(".github").join("workflows");
+        let dir = root.join(".gitforest").join("workflows");
         std::fs::write(dir.join("reusable.yml"), reusable).unwrap();
         let identity = Identity::generate();
         let mut jobs = ComputeJobStore::new();
@@ -1602,18 +1602,18 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     concurrency:
-      group: deploy-${{ github.ref_name }}
+      group: deploy-${{ gitforest.ref_name }}
       cancel-in-progress: true
     steps:
       - run: echo deploy
 "#;
 
     #[test]
-    fn github_context_builds_ref_shapes() {
+    fn gitforest_context_builds_ref_shapes() {
         let push = WorkflowEvent::Push {
             branch: "main".to_string(),
         };
-        let ctx = github_context(&push, "demo", "CI", "abc123", "run-1");
+        let ctx = gitforest_context(&push, "demo", "CI", "abc123", "run-1");
         assert_eq!(ctx["event_name"], "push");
         assert_eq!(ctx["ref"], "refs/heads/main");
         assert_eq!(ctx["ref_name"], "main");
@@ -1624,7 +1624,7 @@ jobs:
         let tag = WorkflowEvent::Tag {
             tag: "v1.2.3".to_string(),
         };
-        let tctx = github_context(&tag, "demo", "Release", "def456", "run-2");
+        let tctx = gitforest_context(&tag, "demo", "Release", "def456", "run-2");
         assert_eq!(tctx["ref"], "refs/tags/v1.2.3");
         assert_eq!(tctx["ref_name"], "v1.2.3");
         let chained = WorkflowEvent::WorkflowRun {
@@ -1633,7 +1633,7 @@ jobs:
             conclusion: "success".to_string(),
             branch: "main".to_string(),
         };
-        let cctx = github_context(&chained, "demo", "Report", "abc123", "run-3");
+        let cctx = gitforest_context(&chained, "demo", "Report", "abc123", "run-3");
         assert_eq!(cctx["event_name"], "workflow_run");
         assert_eq!(cctx["workflow_run_workflow"], "CI");
         assert_eq!(cctx["workflow_run_conclusion"], "success");
@@ -1712,7 +1712,7 @@ jobs:
   ship:
     runs-on: ubuntu-latest
     environment:
-      name: prod-${{ github.ref_name }}
+      name: prod-${{ gitforest.ref_name }}
       url: https://example.com/prod
     steps:
       - run: echo ship
@@ -1835,14 +1835,14 @@ jobs:
 
     #[test]
     fn join_within_repo_rejects_escapes() {
-        let parent = Path::new(".github/workflows");
+        let parent = Path::new(".gitforest/workflows");
         assert_eq!(
             join_within_repo(parent, "./other.yml").unwrap(),
-            PathBuf::from(".github/workflows/other.yml")
+            PathBuf::from(".gitforest/workflows/other.yml")
         );
         assert_eq!(
             join_within_repo(parent, "../shared.yml").unwrap(),
-            PathBuf::from(".github/shared.yml")
+            PathBuf::from(".gitforest/shared.yml")
         );
         assert_eq!(
             join_within_repo(parent, "../../evil.yml").unwrap(),
@@ -1875,7 +1875,7 @@ name: Caller
 on: push
 jobs:
   hello:
-    uses: shared/.github/workflows/build.yml@main
+    uses: shared/.gitforest/workflows/build.yml@main
     with:
       greeting: hi
     secrets: inherit
@@ -2042,7 +2042,7 @@ name: Caller
 on: push
 jobs:
   hello:
-    uses: nosuch/.github/workflows/build.yml@main
+    uses: nosuch/.gitforest/workflows/build.yml@main
 "#;
         let caller_root = git_repo_with_workflow(caller);
         let identity = Identity::generate();
@@ -2091,7 +2091,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: shared/.github/actions/echo/action.yml@main
+      - uses: shared/.gitforest/actions/echo/action.yml@main
         with:
           text: hello-remote
   local:
@@ -2112,9 +2112,9 @@ runs:
     - run: echo "said ${{ inputs.text }}"
 "#;
         let shared_root =
-            git_repo_with_committed_files(&[(".github/actions/echo/action.yml", action)]);
+            git_repo_with_committed_files(&[(".gitforest/actions/echo/action.yml", action)]);
         let caller_root = git_repo_with_workflow(caller);
-        let near_dir = caller_root.join(".github").join("actions").join("near");
+        let near_dir = caller_root.join(".gitforest").join("actions").join("near");
         std::fs::create_dir_all(&near_dir).unwrap();
         std::fs::write(near_dir.join("action.yml"), near).unwrap();
         let identity = Identity::generate();

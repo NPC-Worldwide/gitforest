@@ -114,7 +114,7 @@ export default function FirstRunWizard({ onComplete }: { onComplete: () => void 
           {step === 'welcome' && (
             <>
               <Trees size={48} className="text-emerald-500 mb-4" />
-              <h1 className="text-2xl font-bold theme-text-primary mb-2">Welcome to GitForest</h1>
+              <h1 className="text-2xl font-bold theme-text-primary mb-2">Welcome to gitforest</h1>
               <p className="text-sm theme-text-muted mb-6">
                 Decentralized P2P git hosting. Your repos, hosted by you, discovered on a DHT,
                 signed with your own Ed25519 key. No company controls the network.
@@ -134,7 +134,7 @@ export default function FirstRunWizard({ onComplete }: { onComplete: () => void 
               <KeyRound size={40} className="text-emerald-500 mb-4" />
               <h2 className="text-xl font-semibold theme-text-primary mb-2">Your identity</h2>
               <p className="text-sm theme-text-muted mb-4">
-                GitForest generates an Ed25519 keypair. Your public key <em>is</em> your account —
+                gitforest generates an Ed25519 keypair. Your public key <em>is</em> your account —
                 no sign-ups, no passwords, no email.
               </p>
               <button onClick={genIdentity} disabled={busy}
@@ -218,7 +218,7 @@ export default function FirstRunWizard({ onComplete }: { onComplete: () => void 
                 <li className="flex items-center gap-2">{cloneStatus === 'ok' ? <CheckCircle2 size={14} className="text-emerald-500" /> : <AlertTriangle size={14} className="text-amber-500" />} First clone {cloneStatus === 'ok' ? 'complete' : 'skipped'}</li>
               </ul>
               <button onClick={onComplete} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded px-5 py-2.5">
-                Open GitForest <ArrowRight size={16} />
+                Open gitforest <ArrowRight size={16} />
               </button>
             </>
           )}

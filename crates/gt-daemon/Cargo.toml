@@ -3,7 +3,7 @@ name = "gt-daemon"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "GitForest daemon: P2P node, repo hosting, HTTP API"
+description = "gitforest daemon: P2P node, repo hosting, HTTP API"
 
 [[bin]]
 name = "gitforest"

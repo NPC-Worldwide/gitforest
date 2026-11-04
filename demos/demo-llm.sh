@@ -153,8 +153,8 @@ for _ in $(seq 1 6); do
 done
 echo "$SEEDERS" | grep -q '"seeders":2' && echo "mesh: 2 seeders visible" || echo "WARN: seeder count did not reach 2 (non-fatal)"
 
-mkdir -p "$TMP/repo/.github/workflows"
-cat > "$TMP/repo/.github/workflows/llm-step.yml" <<EOF
+mkdir -p "$TMP/repo/.gitforest/workflows"
+cat > "$TMP/repo/.gitforest/workflows/llm-step.yml" <<EOF
 name: LLMStep
 on:
   workflow_dispatch:

@@ -59,7 +59,7 @@ impl PointerFile {
     }
 }
 
-/// Check if some file content looks like a GitForest LFS pointer file.
+/// Check if some file content looks like a gitforest LFS pointer file.
 pub fn is_pointer_file(content: &[u8]) -> bool {
     if let Ok(s) = std::str::from_utf8(content) {
         s.starts_with(POINTER_VERSION) && s.contains("oid sha256:") && s.contains("size ")

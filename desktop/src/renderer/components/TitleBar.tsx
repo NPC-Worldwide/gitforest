@@ -25,7 +25,7 @@ export default function TitleBar() {
   if (isMac) {
     return (
       <div className="h-8 flex-shrink-0 flex items-center justify-between select-none pl-20 theme-bg-secondary border-b theme-border" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-        <span className="text-xs font-medium theme-text-muted">GitForest</span>
+        <span className="text-xs font-medium theme-text-muted">gitforest</span>
         <div className="flex items-center pr-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>{statusDot}</div>
       </div>
     );
@@ -35,7 +35,7 @@ export default function TitleBar() {
     <div className="h-9 flex-shrink-0 flex items-center justify-between theme-bg-secondary border-b theme-border select-none" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
       <div className="flex items-center gap-2 px-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <Trees size={16} className="text-emerald-500" />
-        <span className="text-xs font-medium theme-text-primary">GitForest</span>
+        <span className="text-xs font-medium theme-text-primary">gitforest</span>
       </div>
       <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <div className="px-2">{statusDot}</div>

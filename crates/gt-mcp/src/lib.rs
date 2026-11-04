@@ -51,7 +51,7 @@ pub fn tool_definitions() -> Vec<Value> {
     vec![
         tool(
             "daemon_status",
-            "Network status of the local GitForest daemon: peer id, connections, repo counts.",
+            "Network status of the local gitforest daemon: peer id, connections, repo counts.",
             object_schema(json!({}), &[]),
         ),
         tool(
@@ -138,7 +138,7 @@ pub fn tool_definitions() -> Vec<Value> {
         ),
         tool(
             "dispatch_workflow",
-            "Dispatch a workflow run in a hosted repo (GitHub-Actions style).",
+            "Dispatch a workflow run in a hosted repo.",
             object_schema(
                 json!({
                     "name": str_prop("Repo name"),

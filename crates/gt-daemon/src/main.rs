@@ -21,7 +21,7 @@ mod workflows;
 
 #[derive(Parser)]
 #[command(name = "gitforest")]
-#[command(about = "GitForest — decentralized P2P git hosting")]
+#[command(about = "gitforest — decentralized P2P git hosting")]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -38,7 +38,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Start or stop the GitForest daemon
+    /// Start or stop the gitforest daemon
     Daemon {
         /// Run in foreground (don't daemonize)
         #[arg(long, default_value_t = true)]
@@ -136,7 +136,7 @@ enum Commands {
         action: LlmAction,
     },
 
-    /// GitHub-style workflows: list, dispatch, and track runs
+    /// gitforest-style workflows: list, dispatch, and track runs
     Workflow {
         #[command(subcommand)]
         action: WorkflowAction,
@@ -785,7 +785,7 @@ async fn main() -> Result<()> {
                 .as_ref()
                 .cloned()
                 .unwrap_or_else(gt_core::identity::identity_key_path);
-            info!("Starting GitForest daemon");
+            info!("Starting gitforest daemon");
             info!("Peer ID: {}", identity.peer_id());
             info!("API: http://127.0.0.1:{}", config.api_port);
             info!("P2P port: {}", config.p2p_port);

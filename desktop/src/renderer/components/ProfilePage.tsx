@@ -98,7 +98,7 @@ export default function ProfilePage() {
       <div className="theme-bg-secondary rounded border theme-border p-6">
         <h3 className="text-sm font-semibold theme-text-primary mb-3">Backup & sign-in</h3>
         <p className="text-xs theme-text-muted mb-4">
-          "Signing in" on a GitForest network = restoring your identity key on a machine. Keep an encrypted export safe.
+          "Signing in" on a gitforest network = restoring your identity key on a machine. Keep an encrypted export safe.
         </p>
         <div className="flex gap-3">
           <button onClick={exportBackup} disabled={busy}

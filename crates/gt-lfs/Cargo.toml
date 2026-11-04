@@ -3,7 +3,7 @@ name = "gt-lfs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "GitForest large file storage: decentralized blob sharing for ML models and datasets"
+description = "gitforest large file storage: decentralized blob sharing for ML models and datasets"
 
 [dependencies]
 gt-core = { path = "../gt-core" }

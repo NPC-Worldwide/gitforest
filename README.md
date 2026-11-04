@@ -1,28 +1,27 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/NPC-Worldwide/gitforest/main/desktop/gitforest.png" alt="GitForest logo" width="200">
+  <img src="desktop/gitforest.png" alt="gitforest logo" width="200">
 </p>
 
-<h1 align="center">GitForest</h1>
+<h1 align="center">gitforest</h1>
 
 <p align="center">
   <strong>Decentralized P2P git hosting.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/NPC-Worldwide/gitforest/blob/main/LICENSE"><img src="https://img.shields.io/github/license/NPC-Worldwide/gitforest" alt="License"></a>
-  <a href="https://github.com/NPC-Worldwide/gitforest/releases"><img src="https://img.shields.io/github/v/release/NPC-Worldwide/gitforest?include_prereleases" alt="Release"></a>
-  <a href="https://github.com/NPC-Worldwide/gitforest/actions/workflows/ci.yml"><img src="https://github.com/NPC-Worldwide/gitforest/actions/workflows/ci.yml/badge.svg" alt="Build Status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License"></a>
+  <a href="https://gitforest.net/downloads.html"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fstorage.googleapis.com%2Fgitforest-executables%2Fmanifest.json&query=%24.version&label=release" alt="Release"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/NPC-Worldwide/gitforest/releases"><strong>Download for Linux and macOS</strong></a>
+  <a href="https://gitforest.net/downloads.html"><strong>Download for Linux and macOS</strong></a>
 </p>
 
 ---
 
 Decentralized P2P git hosting. Users host their own repos, share them over a BitTorrent-style DHT network, and collaborate directly peer-to-peer. Seeder/leecher counts serve as organic quality signals. No company controls the network.
 
-Git is already a decentralized VCS — GitForest just gives it a proper P2P hosting layer.
+Git is already a decentralized VCS — gitforest just gives it a proper P2P hosting layer.
 
 ## Architecture
 
@@ -39,7 +38,7 @@ Git is already a decentralized VCS — GitForest just gives it a proper P2P host
 │                             ├── Git Protocol      │
 │                             ├── Compute Runner    │
 │                             ├── HTTP API (axum)   │
-│                             └── Web UI            │
+│                             └── Desktop App       │
 │                                  │                │
 │                     http://127.0.0.1:7878         │
 └──────────────────────────────────────────────────┘
@@ -50,6 +49,9 @@ Git is already a decentralized VCS — GitForest just gives it a proper P2P host
 │             Other Peers (same stack)              │
 └──────────────────────────────────────────────────┘
 ```
+
+<details>
+<summary><b>Crates</b> — workspace layout</summary>
 
 ## Crates
 
@@ -63,8 +65,9 @@ Git is already a decentralized VCS — GitForest just gives it a proper P2P host
 | `gt-lfs` | Large file storage: content-addressed blobs, adaptive chunking, collection manifests for ML models and datasets |
 | `gt-daemon` | Main binaries (`gitforest`, `gtfo`): CLI, HTTP API, network management |
 | `gt-remote` | Git remote helper binary (`git-remote-gitforest`) for `gitforest://` URLs |
-| `gt-web` | Embedded web dashboard (static HTML/JS served by the daemon) |
 | `gt-mcp` | MCP server binary (`gitforest-mcp`) for AI agents over stdio |
+
+</details>
 
 ## Prerequisites
 
@@ -76,9 +79,9 @@ Git is already a decentralized VCS — GitForest just gives it a proper P2P host
 ## Building
 
 ```sh
-# Clone the repo
-git clone https://github.com/NPC-Worldwide/gitforest.git
-cd git-forest
+# Clone the source over the network (install a binary release first if needed)
+git clone gitforest://5f96491aeaec155bb5a4fc3f029f3192fc40697d9ea7b3defa332d5151a3a90a/gitforest
+cd gitforest
 
 # Build everything
 cargo build --release
@@ -127,7 +130,7 @@ gitforest daemon
 This starts:
 - **DHT node** on port 9418 (announces your repos, discovers peers via mDNS on LAN)
 - **Git protocol server** on port 9419 (for direct P2P git fetch/push)
-- **HTTP API + Web UI** at http://127.0.0.1:7878
+- **HTTP API** at http://127.0.0.1:7878 (the desktop app talks to it)
 
 ### 4. Clone from the network
 
@@ -136,6 +139,9 @@ On another machine (or the same one for testing):
 ```sh
 git clone gitforest://<peer_id>/<repo_name>
 ```
+
+<details>
+<summary><b>CLI Reference</b> — every command</summary>
 
 ## CLI Reference
 
@@ -209,18 +215,7 @@ gitforest secrets <repo> delete <key>           Delete a repo secret
 gtfo <same commands>                            Shorthand alias for gitforest
 ```
 
-## Web UI
-
-When the daemon is running, open http://127.0.0.1:7878 for:
-
-- **Repos** — repo cards with seeding status and click-to-copy clone URLs; click through for commits, branches, and access control (grant/revoke)
-- **Blobs** — stored blobs with seeder/leecher counts, collections (models, datasets) with file manifests, live transfer progress, and the shared workflow-cache directory (local + peer-advertised keys)
-- **Models** — search local and DHT-known models, pull weights, test inference with a prompt, manage per-model access (open/restricted, per-peer grants)
-- **Compute** — submit CI jobs from a form (repo, commit, max sats, chain, YAML prefilled from `.gitforest-ci.yml`), view job statuses with logs, approve/reject held environment deployments, cancel jobs, browse workers, monitor payment channels
-- **Workflows** — workflow runs with per-status job counts and per-job status detail
-- **Network** — connected-peer count, repos hosted/seeding counts, P2P port
-- **Proposals** — incoming merge requests and patches across all repos
-- **Identity** — your peer ID and `gitforest://` repo address format
+</details>
 
 ## Desktop app
 
@@ -237,9 +232,12 @@ driven by `gui-test/smoke.js`): it walks all six pages, publishes a display
 name, submits a compute job through the real UI, and fails on any console
 error.
 
+<details>
+<summary><b>Compute Marketplace</b> — paid P2P builds, workers, payment chains</summary>
+
 ## Compute Marketplace
 
-GitForest includes a decentralized CI/CD system. Peers can offer their compute resources and get paid for running builds and tests — in crypto (Lightning, EVM L2) or network mutual credit.
+gitforest includes a decentralized CI/CD system. Peers can offer their compute resources and get paid for running builds and tests — in crypto (Lightning, EVM L2) or network mutual credit.
 
 ### As a job submitter
 
@@ -292,9 +290,14 @@ gitforest compute worker-start --cpu 4 --ram 8192 --rate 1000
 
 Payment backends are pluggable via the `PaymentBackend` trait. See `specs/003-payment-settlement/spec.md` for the full design.
 
+</details>
+
+<details>
+<summary><b>Large File Storage</b> — blobs, models, datasets, automated workflows</summary>
+
 ## Large File Storage (LFS)
 
-GitForest includes decentralized large file storage for sharing ML model weights, datasets, and other large artifacts over the P2P network. Think Git LFS, but fully decentralized with BitTorrent-style distribution.
+gitforest includes decentralized large file storage for sharing ML model weights, datasets, and other large artifacts over the P2P network. Think Git LFS, but fully decentralized with BitTorrent-style distribution.
 
 ### How it works
 
@@ -313,10 +316,10 @@ GitForest includes decentralized large file storage for sharing ML model weights
 5. **Collection manifests** — Group related blobs into signed collections (e.g., a model's weights + tokenizer + config).
 6. **Swarm fetch** — Each tick pulls up to 64 missing pieces concurrently, spread across known seeders with per-piece fallback to the next seeder; every piece is SHA-256-verified before it counts, so a download can reassemble from seeders that each hold only part of the file. Downloaders announce partial progress on the DHT and serve the verified pieces they already hold, so slow or partial peers still contribute to the swarm.
 
-### GitHub-style workflows
+### Automated workflows
 
-Repos can ship Actions-style workflows in `.github/workflows/*.yml`
-(or `.gitforest/workflows/`). Pushes and merge requests trigger matching
+Repos can ship workflows in `.gitforest/workflows/*.yml`
+(or `gitforest/workflows/`). Pushes and merge requests trigger matching
 workflows automatically; jobs with `needs:` wait for their dependencies
 and `strategy.matrix` fans out into parallel jobs:
 
@@ -351,8 +354,8 @@ jobs:
 
 `push:` also accepts `tags:` (with `tags-ignore:`) for release-style
 flows: dispatching with a tag runs workflows whose tag globs match, and
-a tags-only `push:` filter stays quiet on branch pushes, matching
-Actions. Pushing a tag to a hosted repo fires matching workflows
+a tags-only `push:` filter stays quiet on branch pushes.
+Pushing a tag to a hosted repo fires matching workflows
 automatically, and `POST /api/repos/{name}/workflows/dispatch` takes
 an optional `tag` alongside `branch` (a tag wins when both are given).
 
@@ -420,14 +423,14 @@ worker.
 A job fails when any step exits nonzero; its signed result (exit code,
 logs, outputs, artifacts) is still stored and served so failures stay
 inspectable. Matrix strategies cancel their surviving siblings on the
-first failure unless `fail-fast: false` is set, matching Actions —
+first failure unless `fail-fast: false` is set —
 queued and assigned siblings are cancelled outright (assigned workers
 are notified and escrows settle back), while already-running jobs run
 to completion.
 
 Workflows and jobs take a `concurrency:` key, either a plain group
 name or a mapping with `group:` plus `cancel-in-progress: true`. Group
-names substitute `matrix:`, `inputs:`, and the `github:` context
+names substitute `matrix:`, `inputs:`, and the `gitforest:` context
 (`event_name`, `ref`, `ref_name`, `sha`, `repository`, `workflow`,
 `run_id`, `head_ref`); branchless dispatches resolve the ref against
 the default branch `main`. Queued jobs wait while another job holds
@@ -438,7 +441,7 @@ the default for jobs that do not set their own.
 
 Jobs name a deployment target with `environment:`, either a plain name
 or a mapping with `name:` and `url:`. Names substitute `matrix:`,
-`inputs:`, and the `github:` context. Environments listed in the
+`inputs:`, and the `gitforest:` context. Environments listed in the
 daemon's `protected_environments` compute setting hold their jobs out
 of the claim queue until someone approves them with
 `POST /api/compute/jobs/{id}/approve` (or `gitforest compute approve`);
@@ -481,7 +484,7 @@ Workflows shared between jobs live in reusable files. A file with an
 `default:`) and `secrets:`, and callers inline it with `uses:`:
 
 ```yaml
-# .github/workflows/greet.yml
+# .gitforest/workflows/greet.yml
 name: Greet
 on:
   workflow_call:
@@ -508,7 +511,7 @@ relationships, and inherit the caller's matrix and entry `needs:`. Calls
 nest, and cycles or missing required inputs fail the workflow with an
 error instead of running.
 
-Calls also reach across repos: `uses: other-repo/.github/workflows/build.yml@v1`
+Calls also reach across repos: `uses: other-repo/.gitforest/workflows/build.yml@v1`
 checks out the callee at the pinned ref and inlines it the same way.
 Callers read callee outputs two ways — `needs.<call>.outputs.<name>`
 for the call's declared outputs, or `needs.<call>/<job>.outputs.<key>`
@@ -527,7 +530,7 @@ minute slot. Failed jobs re-run as a linked run with
 which clones failed jobs plus never-ran cancelled dependents under a
 new run id.
 
-Jobs declare API access with GitHub-style `permissions:` (top-level
+Jobs declare API access with `permissions:` (top-level
 defaults, per-job overrides, `read-all`/`write-all` shorthands) over
 three scopes:
 
@@ -658,6 +661,8 @@ Blobs are stored content-addressed on disk:
 ~/.local/share/gitforest/blobs/<first-2-hex>/<next-2-hex>/<full-sha256-hex>
 ```
 
+</details>
+
 ## Collaboration
 
 Three modes of collaboration, all cryptographically signed:
@@ -676,6 +681,9 @@ Three modes of collaboration, all cryptographically signed:
 - **Transport encryption**: All P2P connections encrypted via Noise protocol (libp2p).
 - **Content integrity**: Git SHA hashes verify content. Torrent piece hashes verify transfer.
 - **Compute sandboxing**: Jobs run in Docker containers with CPU/RAM/network limits and timeouts — unless the worker runs `worker-start --local` / `execution_mode = "local"`, which executes job shells directly on the host without container isolation.
+
+<details>
+<summary><b>Configuration</b> — config.toml reference</summary>
 
 ## Configuration
 
@@ -723,6 +731,8 @@ lightning = "lnbc1youraddress..."
 arbitrum = "0xYourAddress..."
 ```
 
+</details>
+
 ## Key Dependencies
 
 | Dependency | Purpose |
@@ -746,6 +756,9 @@ cargo test --workspace --no-fail-fast
 ```
 
 The suite covers: identity lifecycle, repo addressing, ACL authorization, patch/merge request signing, torrent piece verification, bundle create/verify/clone/fetch, git bridge ref listing, repo index operations, compute job creation/verification, offer matching, payment channel lifecycle, worker reputation, CI config parsing, blob content addressing, adaptive piece sizing, blob store operations, pointer file encoding, collection manifest signing, seeder/leecher tracking, P2P transfer manager lifecycle, piece serving, piece assignment strategy, workflow parsing/expansion/triggers/permissions, and API auth scoping. End-to-end behavior is pinned by executable demos (`demos/demo-*.sh`, each ending in `PASS`) plus the desktop smoke test (`./gui-test/run.sh`).
+
+<details>
+<summary><b>HTTP API Endpoints</b> — full route list</summary>
 
 ## HTTP API Endpoints
 
@@ -847,7 +860,7 @@ scoped also accept a job token (`GF_JOB_TOKEN`) carrying the named permission.
 - `GET /api/status` — network status
 - `GET /api/peers` — connected peers
 - `GET /api/peers/exchange` — peer/cache/model directory for gossip
-- `GET /api/analytics/summary` — peer/storage totals for dashboards
+- `GET /api/analytics/summary` — peer/storage totals for the desktop app
 - `GET /api/analytics/history` — sampled peer-count history
 - `GET /api/resolve/{identifier}` — resolve a peer name tag or alias
 
@@ -856,9 +869,10 @@ scoped also accept a job token (`GF_JOB_TOKEN`) carrying the named permission.
 - `POST /api/remote/{peer_id}/{repo}/fetch` — fetch from a remote peer
 - `POST /api/remote/{peer_id}/{repo}/push` — push to a remote peer
 
-## Deploy Bootstrap Nodes to Google Cloud
+</details>
 
-See `deploy/gcloud/README.md` for Terraform and helper scripts that create 3 persistent GitForest bootstrap/seed nodes on Google Compute Engine with static IPs, persistent data disks, and firewall rules for P2P, git protocol, and Web UI traffic.
+<details>
+<summary><b>MCP Server</b> — AI agent tools over stdio</summary>
 
 ## MCP Server (AI agents)
 
@@ -881,6 +895,8 @@ to the local daemon (`GITFOREST_DAEMON_URL`, default
 }
 ```
 
+</details>
+
 ## License
 
-AGPL-3.0
+AGPL-3.0-or-later — see [LICENSE](LICENSE).

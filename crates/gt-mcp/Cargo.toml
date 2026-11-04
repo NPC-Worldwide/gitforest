@@ -3,7 +3,7 @@ name = "gt-mcp"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "GitForest MCP server: stdio JSON-RPC tools over the daemon HTTP API"
+description = "gitforest MCP server: stdio JSON-RPC tools over the daemon HTTP API"
 
 [[bin]]
 name = "gitforest-mcp"

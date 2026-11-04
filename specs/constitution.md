@@ -1,9 +1,9 @@
-# GitForest Product Constitution
+# gitforest Product Constitution
 
 **Version**: 1.0 | **Ratified**: 2026-10-23 | **Product Stage**: Pre-production → Production (hackathon push)
 
 ## Mission
-GitForest ships as a real product: a decentralized P2P git hosting network that any developer can
+gitforest ships as a real product: a decentralized P2P git hosting network that any developer can
 install in one step and use through a polished desktop app. No company controls the network;
 the client is the product.
 
@@ -11,7 +11,7 @@ the client is the product.
 
 ### I. Binary-first distribution
 Every release must produce a downloadable raw binary (Linux x64, macOS arm64, .deb) published as
-a GitHub release asset, installable via `install.sh` one-liner. No "clone and cargo build" for end users.
+a gitforest release asset, installable via `install.sh` one-liner. No "clone and cargo build" for end users.
 
 ### II. Daemon + native-feel desktop client
 The `gitforest` daemon owns the network; the desktop client owns the experience. Client talks to the

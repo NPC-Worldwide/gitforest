@@ -17,7 +17,7 @@ pub enum IdentityError {
     SerializationError(String),
 }
 
-/// A user's identity on the GitForest network.
+/// A user's identity on the gitforest network.
 /// The public key IS the identity — no usernames, no accounts.
 #[derive(Clone, Debug)]
 pub struct Identity {

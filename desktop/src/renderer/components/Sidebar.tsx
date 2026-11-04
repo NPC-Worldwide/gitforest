@@ -17,7 +17,7 @@ export default function Sidebar({ page, onNavigate }: { page: Page; onNavigate: 
     <div className="w-44 flex-shrink-0 theme-bg-secondary border-r theme-border flex flex-col">
       <div className="flex items-center gap-2 px-4 py-3 border-b theme-border">
         <Trees size={18} className="text-emerald-500" />
-        <span className="text-sm font-semibold theme-text-primary">GitForest</span>
+        <span className="text-sm font-semibold theme-text-primary">gitforest</span>
       </div>
       <nav className="flex-1 py-2">
         {ITEMS.map((item) => (

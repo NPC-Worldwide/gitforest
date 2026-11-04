@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
-/// All wire protocol messages exchanged between GitForest peers.
+/// All wire protocol messages exchanged between gitforest peers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Message {
     // === Discovery ===
