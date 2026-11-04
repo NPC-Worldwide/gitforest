@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --all-targets
+      - run: cargo test --workspace
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: cargo build -p gt-daemon -p gt-remote --release
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run check
+        working-directory: desktop
+      - run: npm run build
+        working-directory: desktop
+
+  release-dryrun:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Mirrors the build-linux and build-deb jobs in release.yml so the
+      # release packaging stays exercised on every push. No uploads here:
+      # publishing still happens only on v* tags via release.yml.
+      - run: cargo build --workspace --release
+      - run: sh scripts/dist.sh 0.0.0-dryrun linux-x64
+      - run: |
+          tar tzf gitforest-linux-x64.tar.gz | grep -q bin/gitforest
+          test "$(tar -xzf gitforest-linux-x64.tar.gz -O gitforest/VERSION)" = 0.0.0-dryrun
+          sha256sum -c gitforest-linux-x64.tar.gz.sha256
+      - run: |
+          VERSION="0.0.0-dryrun"
+          mkdir -p debian/usr/bin debian/DEBIAN
+          cp target/release/gitforest debian/usr/bin/
+          cp target/release/git-remote-gitforest debian/usr/bin/
+          cp target/release/gtfo debian/usr/bin/ 2>/dev/null || true
+          cat > debian/DEBIAN/control <<EOF
+          Package: gitforest
+          Version: $VERSION
+          Section: vcs
+          Priority: optional
+          Architecture: amd64
+          Maintainer: GitForest Team <team@gitforest.dev>
+          Description: P2P git hosting over libp2p
+           GitForest lets you host and clone git repositories peer-to-peer
+           without a central server, using Kademlia DHT and mDNS discovery.
+          EOF
+          dpkg-deb --build debian gitforest_${VERSION}_amd64.deb
+          dpkg-deb -f gitforest_${VERSION}_amd64.deb Package | grep -q gitforest

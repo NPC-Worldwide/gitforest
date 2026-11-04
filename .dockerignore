@@ -1,0 +1,7 @@
+target/
+.claude/
+.git/
+.github/
+*.md
+run-docker-test.sh
+docker-compose.yml

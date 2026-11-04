@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --theme-bg-dark: #0f172a;
+  --theme-text-dark: #f1f5f9;
+  --theme-primary-dark: #059669;
+  --theme-bg-secondary-dark: color-mix(in srgb, var(--theme-bg-dark), #fff 8%);
+  --theme-bg-tertiary-dark: color-mix(in srgb, var(--theme-bg-dark), #fff 15%);
+  --theme-text-secondary-dark: color-mix(in srgb, var(--theme-text-dark), var(--theme-bg-dark) 10%);
+  --theme-text-muted-dark: color-mix(in srgb, var(--theme-text-dark), var(--theme-bg-dark) 25%);
+  --theme-border-dark: color-mix(in srgb, var(--theme-bg-dark), #fff 20%);
+  --theme-border-secondary-dark: color-mix(in srgb, var(--theme-bg-dark), #fff 30%);
+  --theme-input-bg-dark: var(--theme-bg-secondary-dark);
+  --theme-input-border-dark: var(--theme-border-secondary-dark);
+  --theme-button-bg-dark: var(--theme-bg-tertiary-dark);
+  --theme-button-hover-dark: color-mix(in srgb, var(--theme-bg-dark), #fff 25%);
+  --theme-primary-hover-dark: color-mix(in srgb, var(--theme-primary-dark), #000 20%);
+  --theme-success-dark: #10b981;
+  --theme-danger-dark: #ef4444;
+
+  --theme-bg: var(--theme-bg-dark);
+  --theme-bg-secondary: var(--theme-bg-secondary-dark);
+  --theme-bg-tertiary: var(--theme-bg-tertiary-dark);
+  --theme-text: var(--theme-text-dark);
+  --theme-text-secondary: var(--theme-text-secondary-dark);
+  --theme-text-muted: var(--theme-text-muted-dark);
+  --theme-border: var(--theme-border-dark);
+  --theme-border-secondary: var(--theme-border-secondary-dark);
+  --theme-primary: var(--theme-primary-dark);
+  --theme-primary-hover: var(--theme-primary-hover-dark);
+  --theme-success: var(--theme-success-dark);
+  --theme-danger: var(--theme-danger-dark);
+  --theme-hover: color-mix(in srgb, var(--theme-bg-dark), #fff 20%);
+  --theme-active: color-mix(in srgb, var(--theme-bg-dark), #fff 25%);
+  --theme-button-bg: var(--theme-button-bg-dark);
+  --theme-button-hover: var(--theme-button-hover-dark);
+  --theme-input-bg: var(--theme-input-bg-dark);
+  --theme-input-border: var(--theme-input-border-dark);
+}
+
+.theme-bg-primary { background-color: var(--theme-bg); }
+.theme-bg-secondary { background-color: var(--theme-bg-secondary); }
+.theme-bg-tertiary { background-color: var(--theme-bg-tertiary); }
+.theme-text-primary { color: var(--theme-text); }
+.theme-text-secondary { color: var(--theme-text-secondary); }
+.theme-text-muted { color: var(--theme-text-muted); }
+.theme-border { border-color: var(--theme-border); }
+
+.hover\:theme-bg-tertiary:hover { background-color: var(--theme-bg-tertiary); }
+.hover\:theme-bg-hover:hover { background-color: var(--theme-hover); }
+.hover\:theme-text-primary:hover { color: var(--theme-text); }

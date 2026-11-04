@@ -1,0 +1,254 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+  GCP_WIF_PROVIDER: projects/210615044241/locations/global/workloadIdentityPools/github-pool/providers/github-gitforest
+  GCP_DEPLOY_SA: gitforest-deploy@npcsh-449102.iam.gserviceaccount.com
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Check tag matches workspace version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml','rb'))['workspace']['package']['version'])")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "tag v$TAG_VERSION does not match workspace version $PKG_VERSION"
+            exit 1
+          fi
+
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      cloud: ${{ steps.gate.outputs.cloud }}
+    steps:
+      - id: gate
+        run: |
+          if [ -n "${{ secrets.GCP_WIF_PROVIDER }}" ] || [ "${{ github.event.repository.fork }}" != "true" ]; then
+            echo "cloud=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cloud=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-linux:
+    needs: [gates]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --release
+      - run: sh scripts/dist.sh "${GITHUB_REF_NAME#v}" linux-x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gitforest-linux-x64
+          path: |
+            gitforest-linux-x64.tar.gz
+            gitforest-linux-x64.tar.gz.sha256
+
+  build-macos:
+    needs: [gates]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --release
+      - run: sh scripts/dist.sh "${GITHUB_REF_NAME#v}" macos-arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gitforest-macos-arm64
+          path: |
+            gitforest-macos-arm64.tar.gz
+            gitforest-macos-arm64.tar.gz.sha256
+
+  build-deb:
+    needs: [gates]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --release
+      - run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p debian/usr/bin debian/DEBIAN
+          cp target/release/gitforest debian/usr/bin/
+          cp target/release/git-remote-gitforest debian/usr/bin/
+          cp target/release/gtfo debian/usr/bin/ 2>/dev/null || true
+          cp target/release/gitforest-mcp debian/usr/bin/ 2>/dev/null || true
+          cat > debian/DEBIAN/control <<EOF
+          Package: gitforest
+          Version: $VERSION
+          Section: vcs
+          Priority: optional
+          Architecture: amd64
+          Maintainer: GitForest Team <team@gitforest.dev>
+          Description: P2P git hosting over libp2p
+           GitForest lets you host and clone git repositories peer-to-peer
+           without a central server, using Kademlia DHT and mDNS discovery.
+          EOF
+          dpkg-deb --build debian gitforest_${VERSION}_amd64.deb
+          sha256sum gitforest_${VERSION}_amd64.deb > gitforest_${VERSION}_amd64.deb.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gitforest-deb
+          path: |
+            gitforest_*.deb
+            gitforest_*.deb.sha256
+
+  build-desktop-linux:
+    needs: [gates]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: cargo build -p gt-daemon -p gt-remote --release
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run build
+        working-directory: desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gitforest-desktop-linux
+          path: |
+            desktop/release/*.deb
+            desktop/release/*.AppImage
+
+  build-desktop-macos:
+    needs: [gates]
+    runs-on: macos-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: cargo build -p gt-daemon -p gt-remote --release
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run build
+        working-directory: desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gitforest-desktop-macos
+          path: desktop/release/*.dmg
+
+  publish-gcs:
+    needs: [preflight, build-linux, build-macos, build-deb]
+    if: needs.preflight.outputs.cloud == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER || env.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA || env.GCP_DEPLOY_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: npcsh-449102
+
+      - name: Publish binaries to GCS
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gsutil cp artifacts/gitforest-linux-x64/gitforest-linux-x64.tar.gz \
+            gs://gitforest-executables/linux-x64/
+          gsutil cp artifacts/gitforest-linux-x64/gitforest-linux-x64.tar.gz.sha256 \
+            gs://gitforest-executables/linux-x64/
+          gsutil cp artifacts/gitforest-macos-arm64/gitforest-macos-arm64.tar.gz \
+            gs://gitforest-executables/macos-arm64/
+          gsutil cp artifacts/gitforest-macos-arm64/gitforest-macos-arm64.tar.gz.sha256 \
+            gs://gitforest-executables/macos-arm64/
+          gsutil cp artifacts/gitforest-deb/gitforest_${VERSION}_amd64.deb \
+            gs://gitforest-executables/linux-x64/
+          gsutil cp artifacts/gitforest-deb/gitforest_${VERSION}_amd64.deb.sha256 \
+            gs://gitforest-executables/linux-x64/
+          # Stable alias for the current release
+          gsutil cp artifacts/gitforest-deb/gitforest_${VERSION}_amd64.deb \
+            gs://gitforest-executables/linux-x64/gitforest_amd64.deb
+
+      - name: Publish manifest
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cat > /tmp/manifest.json <<EOF
+          {
+            "version": "$VERSION",
+            "updated": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "downloads": {
+              "linux-tar": "https://storage.googleapis.com/gitforest-executables/linux-x64/gitforest-linux-x64.tar.gz",
+              "macos-tar": "https://storage.googleapis.com/gitforest-executables/macos-arm64/gitforest-macos-arm64.tar.gz",
+              "linux-deb": "https://storage.googleapis.com/gitforest-executables/linux-x64/gitforest_${VERSION}_amd64.deb",
+              "linux-deb-stable": "https://storage.googleapis.com/gitforest-executables/linux-x64/gitforest_amd64.deb",
+              "linux-tar-sha256": "https://storage.googleapis.com/gitforest-executables/linux-x64/gitforest-linux-x64.tar.gz.sha256",
+              "macos-tar-sha256": "https://storage.googleapis.com/gitforest-executables/macos-arm64/gitforest-macos-arm64.tar.gz.sha256",
+              "linux-deb-sha256": "https://storage.googleapis.com/gitforest-executables/linux-x64/gitforest_${VERSION}_amd64.deb.sha256"
+            }
+          }
+          EOF
+          gsutil -h "Cache-Control:no-cache,max-age=0" cp /tmp/manifest.json \
+            gs://gitforest-executables/manifest.json
+
+  release:
+    needs: [gates, build-linux, build-macos, build-deb, build-desktop-linux, build-desktop-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Verify artifacts
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          test -f artifacts/gitforest-linux-x64/gitforest-linux-x64.tar.gz
+          test -f artifacts/gitforest-macos-arm64/gitforest-macos-arm64.tar.gz
+          test -f artifacts/gitforest-deb/gitforest_${VERSION}_amd64.deb
+          test "$(tar -xzf artifacts/gitforest-linux-x64/gitforest-linux-x64.tar.gz -O gitforest/VERSION)" = "$VERSION"
+          test "$(tar -xzf artifacts/gitforest-macos-arm64/gitforest-macos-arm64.tar.gz -O gitforest/VERSION)" = "$VERSION"
+          for sidecar in artifacts/gitforest-linux-x64/*.sha256 artifacts/gitforest-macos-arm64/*.sha256 artifacts/gitforest-deb/*.sha256; do
+            (cd "$(dirname "$sidecar")" && sha256sum -c "$(basename "$sidecar")")
+          done
+          (cd artifacts && find . -type f -exec sha256sum {} + | sort > ../SHA256SUMS.txt)
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*
+            SHA256SUMS.txt
+            install.sh
+          generate_release_notes: true

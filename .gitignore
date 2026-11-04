@@ -1,0 +1,17 @@
+/target
+*.swp
+*.swo
+.DS_Store
+*.deb
+*.tfstate
+*.tfstate.*
+.terraform/
+terraform.tfvars
+*.tfplan
+node_modules/
+dist/
+dist-electron/
+release/
+.env
+.env.*
+!.env.example

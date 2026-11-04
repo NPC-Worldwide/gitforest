@@ -1,0 +1,67 @@
+# TEST CLUSTER ONLY. GITFOREST_SKIP_AUTH=1 below disables API auth so the
+# scripted seeder/bootstrap/leecher flow can run unattended. Never reuse this
+# file, or that variable, for a production deployment.
+version: "3.8"
+
+services:
+  seeder:
+    build: .
+    container_name: gf-seeder
+    hostname: gf-seeder
+    networks:
+      - gitforest
+    environment:
+      - GF_ROLE=seeder
+      - GF_P2P_PORT=9418
+      - GF_API_PORT=7878
+      - GF_REPO_NAME=npcsh
+      - GF_REPO_SOURCE=https://github.com/NPC-Worldwide/npcsh.git
+      - GF_BOOTSTRAP_PEERS=
+      - GITFOREST_SKIP_AUTH=1
+    expose:
+      - "9418"
+      - "9419"
+      - "7878"
+
+  bootstrap:
+    build: .
+    container_name: gf-bootstrap
+    hostname: gf-bootstrap
+    networks:
+      - gitforest
+    environment:
+      - GF_ROLE=bootstrap
+      - GF_P2P_PORT=9418
+      - GF_API_PORT=7878
+      - GF_BOOTSTRAP_PEERS=
+      - GITFOREST_SKIP_AUTH=1
+    expose:
+      - "9418"
+      - "9419"
+      - "7878"
+    depends_on:
+      - seeder
+
+  leecher:
+    build: .
+    container_name: gf-leecher
+    hostname: gf-leecher
+    networks:
+      - gitforest
+    environment:
+      - GF_ROLE=leecher
+      - GF_P2P_PORT=9418
+      - GF_API_PORT=7878
+      - GF_BOOTSTRAP_PEERS=
+      - GITFOREST_SKIP_AUTH=1
+    expose:
+      - "9418"
+      - "9419"
+      - "7878"
+    depends_on:
+      - bootstrap
+    entrypoint: ["/usr/local/bin/run-test.sh"]
+
+networks:
+  gitforest:
+    driver: bridge

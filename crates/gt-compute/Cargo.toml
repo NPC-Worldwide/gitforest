@@ -1,0 +1,42 @@
+[package]
+name = "gt-compute"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "GitForest compute marketplace: P2P CI/CD with crypto payments"
+
+[dependencies]
+gt-core = { path = "../gt-core" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = "0.9"
+chrono = { workspace = true }
+uuid = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }
+rand = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+    "blocking",
+] }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+bollard = "0.18"
+futures-util = "0.3"
+tonic = { version = "0.12", default-features = false, features = ["transport", "prost"] }
+http = "1"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = "0.26"
+tower-service = "0.3"
+hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
+prost = "0.13"
+secp256k1 = { version = "0.33.1", features = ["recovery", "std"] }
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
+rlp = "0.6.1"
+chacha20poly1305 = "0.11.0"
+pbkdf2 = "=0.12.2"
+zeroize = "1.9.1"

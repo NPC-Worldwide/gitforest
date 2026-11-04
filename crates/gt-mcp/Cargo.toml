@@ -1,0 +1,21 @@
+[package]
+name = "gt-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "GitForest MCP server: stdio JSON-RPC tools over the daemon HTTP API"
+
+[[bin]]
+name = "gitforest-mcp"
+path = "src/main.rs"
+
+[lib]
+name = "gt_mcp"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+anyhow = { workspace = true }

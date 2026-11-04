@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitForest</title>
+    <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+    <header>
+        <h1>Git<span>Forest</span></h1>
+        <div class="peer-id-badge" id="peer-id" data-action="copy-peer-id" title="Click to copy full peer ID">loading...</div>
+    </header>
+
+    <nav>
+        <a href="#repos" class="active" data-action="show-tab" data-arg="repos">Repos</a>
+        <a href="#blobs" data-action="show-tab" data-arg="blobs">Blobs</a>
+        <a href="#models" data-action="show-tab" data-arg="models">Models</a>
+        <a href="#compute" data-action="show-tab" data-arg="compute">Compute</a>
+        <a href="#workflows" data-action="show-tab" data-arg="workflows">Workflows</a>
+        <a href="#network" data-action="show-tab" data-arg="network">Network</a>
+        <a href="#proposals" data-action="show-tab" data-arg="proposals">Proposals</a>
+        <a href="#identity" data-action="show-tab" data-arg="identity">Identity</a>
+    </nav>
+
+    <main>
+        <!-- ===== REPOS TAB ===== -->
+        <div id="tab-repos">
+            <h2>My Repositories</h2>
+            <div id="repos-list"><div class="empty">Loading...</div></div>
+        </div>
+
+        <!-- ===== REPO DETAIL VIEW ===== -->
+        <div id="tab-repo-detail" class="hidden">
+            <a class="back-btn" data-action="show-tab" data-arg="repos">&larr; Back to repos</a>
+            <div id="repo-detail-header"></div>
+            <div class="sub-tabs">
+                <button class="active" data-action="show-repo-sub" data-arg="commits">Commits</button>
+                <button data-action="show-repo-sub" data-arg="branches">Branches</button>
+                <button data-action="show-repo-sub" data-arg="acl">Access</button>
+            </div>
+            <div id="repo-sub-commits"></div>
+            <div id="repo-sub-branches" class="hidden"></div>
+            <div id="repo-sub-acl" class="hidden"></div>
+        </div>
+
+        <!-- ===== BLOBS TAB ===== -->
+        <div id="tab-blobs" class="hidden">
+            <h2>Large File Storage</h2>
+
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-blobs">0</div>
+                    <div class="stat-label">Stored Blobs</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-blob-size">0</div>
+                    <div class="stat-label">Total Size</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-collections">0</div>
+                    <div class="stat-label">Collections</div>
+                </div>
+            </div>
+
+            <div class="sub-tabs">
+                <button class="active" data-action="show-blob-sub" data-arg="blobs">Blobs</button>
+                <button data-action="show-blob-sub" data-arg="collections">Collections</button>
+                <button data-action="show-blob-sub" data-arg="transfers">Transfers</button>
+                <button data-action="show-blob-sub" data-arg="caches">Caches</button>
+            </div>
+
+            <div id="blob-sub-blobs">
+                <div class="empty">Loading...</div>
+            </div>
+
+            <div id="blob-sub-collections" class="hidden">
+                <div class="empty">Loading...</div>
+            </div>
+
+            <div id="blob-sub-transfers" class="hidden">
+                <div class="empty">Loading...</div>
+            </div>
+
+            <div id="blob-sub-caches" class="hidden">
+                <div class="empty">Loading...</div>
+            </div>
+        </div>
+
+        <!-- ===== MODELS TAB ===== -->
+        <div id="tab-models" class="hidden">
+            <h2>Shared Models</h2>
+
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-models">0</div>
+                    <div class="stat-label">Known Models</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <div class="submit-grid">
+                        <div>
+                            <label for="model-search">Search name or architecture</label>
+                            <input id="model-search" spellcheck="false" placeholder="llama">
+                        </div>
+                    </div>
+                    <button class="btn-accent" data-action="load-models">Search</button>
+                </div>
+            </div>
+
+            <div id="models-list"><div class="empty">Loading...</div></div>
+        </div>
+
+        <!-- ===== COMPUTE TAB ===== -->
+        <div id="tab-compute" class="hidden">
+            <h2>Compute Marketplace</h2>
+
+            <div class="stats" id="compute-stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-jobs">0</div>
+                    <div class="stat-label">My Jobs</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-workers">0</div>
+                    <div class="stat-label">Available Workers</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-channels">0</div>
+                    <div class="stat-label">Payment Channels</div>
+                </div>
+            </div>
+
+            <div class="sub-tabs">
+                <button class="active" data-action="show-compute-sub" data-arg="jobs">Jobs</button>
+                <button data-action="show-compute-sub" data-arg="workers">Workers</button>
+                <button data-action="show-compute-sub" data-arg="payments">Payments</button>
+            </div>
+
+            <div class="card" id="compute-submit-panel">
+                <div class="card-body">
+                    <div class="proposal-title mb-12">Submit a job</div>
+                    <div class="submit-grid">
+                        <div>
+                            <label for="submit-repo">Repo</label>
+                            <select id="submit-repo"></select>
+                        </div>
+                        <div>
+                            <label for="submit-commit">Commit</label>
+                            <input id="submit-commit" value="HEAD" spellcheck="false">
+                        </div>
+                        <div>
+                            <label for="submit-sats">Max payment (sats)</label>
+                            <input id="submit-sats" type="number" value="10000" min="0">
+                        </div>
+                        <div>
+                            <label for="submit-chain">Chain</label>
+                            <select id="submit-chain">
+                                <option value="lightning">lightning</option>
+                                <option value="eth-base">eth-base</option>
+                                <option value="eth-arbitrum">eth-arbitrum</option>
+                                <option value="eth-optimism">eth-optimism</option>
+                                <option value="eth-polygon">eth-polygon</option>
+                                <option value="solana">solana</option>
+                            </select>
+                        </div>
+                    </div>
+                    <label for="submit-yaml" class="form-label">Job config (.gitforest-ci.yml)</label>
+                    <textarea id="submit-yaml" class="submit-yaml" spellcheck="false" placeholder="Prefilled from the selected repo"></textarea>
+                    <button class="btn-accent" data-action="submit-job">Submit job</button>
+                    <div id="submit-result" class="mt-12"></div>
+                </div>
+            </div>
+
+            <div id="compute-sub-jobs">
+                <div class="empty">No compute jobs yet. Submit one with the form above or <code>gitforest compute submit &lt;repo&gt;</code></div>
+            </div>
+
+            <div id="compute-sub-workers" class="hidden">
+                <div class="empty">No workers available yet.</div>
+            </div>
+
+            <div id="compute-sub-payments" class="hidden">
+                <div class="empty">No payment channels yet.</div>
+            </div>
+        </div>
+
+        <!-- ===== WORKFLOWS TAB ===== -->
+        <div id="tab-workflows" class="hidden">
+            <h2>Workflow Runs</h2>
+
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-runs">0</div>
+                    <div class="stat-label">Runs</div>
+                </div>
+            </div>
+
+            <div id="runs-list"><div class="empty">Loading...</div></div>
+        </div>
+
+        <!-- ===== NETWORK TAB ===== -->
+        <div id="tab-network" class="hidden">
+            <h2>Network Status</h2>
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-peers">0</div>
+                    <div class="stat-label">Connected Peers</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-repos">0</div>
+                    <div class="stat-label">Repos Hosted</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-seeding">0</div>
+                    <div class="stat-label">Seeding</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-p2p-port">-</div>
+                    <div class="stat-label">P2P Port</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== PROPOSALS TAB ===== -->
+        <div id="tab-proposals" class="hidden">
+            <h2>Incoming Proposals</h2>
+            <div class="sub-tabs">
+                <button class="active" data-action="show-proposal-sub" data-arg="merge-requests">Merge Requests</button>
+                <button data-action="show-proposal-sub" data-arg="patches">Patches</button>
+            </div>
+            <div id="proposals-merge-requests">
+                <div class="empty">No merge requests yet.</div>
+            </div>
+            <div id="proposals-patches" class="hidden">
+                <div class="empty">No patches yet.</div>
+            </div>
+        </div>
+
+        <!-- ===== IDENTITY TAB ===== -->
+        <div id="tab-identity" class="hidden">
+            <h2>Identity</h2>
+            <div class="card">
+                <div class="card-body">
+                    <p class="help-text">Your Peer ID (Ed25519 public key)</p>
+                    <div class="clone-url break-all-14" id="identity-peer-id" data-action="copy-peer-id">loading...</div>
+                    <p class="help-text-mt16">
+                        This is your identity on the GitForest network. Share it so others can find and clone your repos.
+                        Anyone can verify your repo announcements and pushes using this key.
+                    </p>
+                    <p class="help-text-mt12">
+                        Your repos are addressed as: <code class="inline-code">gitforest://&lt;your-peer-id&gt;/&lt;repo-name&gt;</code>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="/app.js"></script>
+</body>
+</html>

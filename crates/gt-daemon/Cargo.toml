@@ -1,0 +1,47 @@
+[package]
+name = "gt-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "GitForest daemon: P2P node, repo hosting, HTTP API"
+
+[[bin]]
+name = "gitforest"
+path = "src/main.rs"
+
+[[bin]]
+name = "gtfo"
+path = "src/main.rs"
+
+[dependencies]
+gt-core = { path = "../gt-core" }
+gt-dht = { path = "../gt-dht" }
+gt-transport = { path = "../gt-transport" }
+gt-collab = { path = "../gt-collab" }
+gt-compute = { path = "../gt-compute" }
+gt-lfs = { path = "../gt-lfs" }
+gt-web = { path = "../gt-web" }
+tokio = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+tempfile = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }
+git2 = { workspace = true }
+reqwest = { workspace = true }
+rand = { workspace = true }
+uuid = { workspace = true }
+tokio-util = { workspace = true }
+tokio-stream = { workspace = true }
+http-body-util = { workspace = true }
+chacha20poly1305 = { workspace = true }
+sha2 = { workspace = true }
+chrono = { workspace = true }

@@ -1,0 +1,69 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/gt-core",
+    "crates/gt-dht",
+    "crates/gt-transport",
+    "crates/gt-collab",
+    "crates/gt-compute",
+    "crates/gt-lfs",
+    "crates/gt-daemon",
+    "crates/gt-remote",
+    "crates/gt-web",
+    "crates/gt-mcp",
+]
+
+[workspace.package]
+version = "0.1.1"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+repository = "https://gitforest.net"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+tokio-stream = { version = "0.1" }
+http-body-util = { version = "0.1" }
+chacha20poly1305 = { version = "0.11" }
+
+# Crypto
+ed25519-dalek = { version = "2", features = ["serde", "rand_core"] }
+rand = "0.8"
+sha2 = "0.10"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Git
+git2 = { version = "0.19", features = ["vendored-libgit2", "vendored-openssl"] }
+
+# Networking
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.5", features = ["cors", "fs"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+
+# DHT / P2P
+libp2p = { version = "0.54", features = ["tokio", "noise", "tcp", "dns", "kad", "identify", "mdns", "yamux", "macros", "ping"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Misc
+serde_yaml = "0.9"
+tempfile = "3"
+hex = "0.4"
+base64 = "0.22"
+dirs = "5"
+toml = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }

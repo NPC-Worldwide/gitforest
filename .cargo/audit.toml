@@ -1,0 +1,23 @@
+# cargo-audit ignores. Every entry is blocked on an upstream major upgrade;
+# re-check on each libp2p / bollard bump. See specs/002-threat-model T50.
+[advisories]
+ignore = [
+    # h2 0.3 empty-DATA-frame DoS via hyper 0.14 <- bollard 0.18 (docker
+    # socket client; peer is the local trusted dockerd). Fix needs a
+    # bollard major upgrade (hyper 1.x).
+    "RUSTSEC-2026-0258",
+    # hickory-proto 0.24 O(n^2) compression via libp2p-mdns <- libp2p 0.54.
+    # Fix needs a libp2p major upgrade.
+    "RUSTSEC-2026-0119",
+    # ring 0.16 AES panic with overflow checks via rustls-webpki 0.101
+    # <- libp2p-tls <- libp2p 0.54. Release builds run without overflow
+    # checks; fix needs a libp2p major upgrade.
+    "RUSTSEC-2025-0009",
+    # rustls-webpki 0.101 chain/CRL issues via libp2p-tls <- libp2p 0.54.
+    # Our LND path pins exact certs and never builds chains. Fix needs a
+    # libp2p major upgrade.
+    "RUSTSEC-2026-0104",
+    "RUSTSEC-2026-0382",
+    "RUSTSEC-2026-0098",
+    "RUSTSEC-2026-0099",
+]

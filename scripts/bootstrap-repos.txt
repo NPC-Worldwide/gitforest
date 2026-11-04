@@ -1,0 +1,195 @@
+# NPC Worldwide repos
+npcsh=https://github.com/NPC-Worldwide/npcsh.git
+npcpy=https://github.com/NPC-Worldwide/npcpy.git
+npcts=https://github.com/NPC-Worldwide/npcts.git
+npcrs=https://github.com/NPC-Worldwide/npcrs.git
+git-forest=https://github.com/NPC-Worldwide/gitforest.git
+incognide=https://github.com/NPC-Worldwide/incognide.git
+incognidium=https://github.com/NPC-Worldwide/incognidium.git
+
+# Runtime / build tooling for the NPC stack
+nodejs=https://github.com/nodejs/node.git
+electron=https://github.com/electron/electron.git
+
+# Linux kernel and firmware
+torvalds-linux=https://github.com/torvalds/linux.git
+linux-firmware=https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git
+stable-linux=https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+
+# Kernel build helpers
+pahole=https://git.kernel.org/pub/scm/devel/pahole/pahole.git
+elfutils=https://sourceware.org/git/elfutils.git
+kmod=https://git.kernel.org/pub/scm/utils/kernel/kmod/kmod.git
+
+# Core toolchain and build
+git=https://github.com/git/git.git
+rust=https://github.com/rust-lang/rust.git
+rust-bindgen=https://github.com/rust-lang/rust-bindgen.git
+cbindgen=https://github.com/mozilla/cbindgen.git
+gcc=https://gcc.gnu.org/git/gcc.git
+llvm=https://github.com/llvm/llvm-project.git
+binutils=https://sourceware.org/git/binutils-gdb.git
+glibc=https://sourceware.org/git/glibc.git
+musl=https://git.musl-libc.org/git/musl
+make=https://git.savannah.gnu.org/git/make.git
+cmake=https://gitlab.kitware.com/cmake/cmake.git
+ninja=https://github.com/ninja-build/ninja.git
+meson=https://github.com/mesonbuild/meson.git
+automake=https://git.savannah.gnu.org/git/automake.git
+autoconf=https://git.savannah.gnu.org/git/autoconf.git
+m4=https://git.savannah.gnu.org/git/m4.git
+libtool=https://git.savannah.gnu.org/git/libtool.git
+pkgconf=https://gitea.treehouse.systems/ariadne/pkgconf.git
+bison=https://git.savannah.gnu.org/git/bison.git
+flex=https://github.com/westes/flex.git
+gperf=https://git.savannah.gnu.org/git/gperf.git
+help2man=https://git.savannah.gnu.org/git/help2man.git
+texinfo=https://git.savannah.gnu.org/git/texinfo.git
+intltool=https://gitlab.gnome.org/GNOME/intltool.git
+bc=https://git.savannah.gnu.org/git/bc.git
+
+# GCC prerequisites
+gmp=https://github.com/gmp-mirror/gmp.git
+mpfr=https://gitlab.inria.fr/mpfr/mpfr.git
+mpc=https://gitlab.inria.fr/mpc/mpc.git
+isl=https://repo.or.cz/isl.git
+gettext=https://git.savannah.gnu.org/git/gettext.git
+
+# Compression and archive tools
+zlib=https://github.com/madler/zlib.git
+gzip=https://git.savannah.gnu.org/git/gzip.git
+bzip2=https://sourceware.org/git/bzip2.git
+xz=https://github.com/tukaani-project/xz.git
+lz4=https://github.com/lz4/lz4.git
+zstd=https://github.com/facebook/zstd.git
+tar=https://git.savannah.gnu.org/git/tar.git
+
+# System C libraries and helpers
+libffi=https://github.com/libffi/libffi.git
+expat=https://github.com/libexpat/libexpat.git
+libxcrypt=https://github.com/besser82/libxcrypt.git
+pcre2=https://github.com/PCRE2Project/pcre2.git
+libcap=https://github.com/selinuxproject/libcap.git
+libseccomp=https://github.com/seccomp/libseccomp.git
+ncurses=https://github.com/ThomasDickey/ncurses-snapshots.git
+readline=https://git.savannah.gnu.org/git/readline.git
+
+# Init, process, and core system
+systemd=https://github.com/systemd/systemd.git
+util-linux=https://github.com/util-linux/util-linux.git
+procps=https://gitlab.com/procps-ng/procps.git
+psmisc=https://gitlab.com/psmisc/psmisc.git
+sysvinit=https://git.savannah.gnu.org/git/sysvinit.git
+runit=https://github.com/void-linux/runit.git
+openrc=https://github.com/OpenRC/openrc.git
+pam=https://github.com/linux-pam/linux-pam.git
+
+# Shells and shell utilities
+bash=https://git.savannah.gnu.org/git/bash.git
+zsh=https://git.zsh.sourceforge.io/zsh.git
+coreutils=https://git.savannah.gnu.org/git/coreutils.git
+findutils=https://git.savannah.gnu.org/git/findutils.git
+grep=https://git.savannah.gnu.org/git/grep.git
+sed=https://git.savannah.gnu.org/git/sed.git
+gawk=https://git.savannah.gnu.org/git/gawk.git
+diffutils=https://git.savannah.gnu.org/git/diffutils.git
+patch=https://git.savannah.gnu.org/git/patch.git
+
+# Networking
+openssl=https://github.com/openssl/openssl.git
+openssh=https://github.com/openssh/openssh-portable.git
+curl=https://github.com/curl/curl.git
+wget=https://git.savannah.gnu.org/git/wget.git
+iptables=https://git.netfilter.org/iptables.git
+nftables=https://git.netfilter.org/nftables.git
+libidn2=https://gitlab.com/libidn/libidn2.git
+libssh2=https://github.com/libssh2/libssh2.git
+nghttp2=https://github.com/nghttp2/nghttp2.git
+libmicrohttpd=https://git.gnupg.org/libmicrohttpd.git
+
+# Crypto / security / TLS
+libgcrypt=https://git.gnupg.org/libgcrypt.git
+gnupg=https://dev.gnupg.org/source/gnupg.git
+libgpg-error=https://git.gnupg.org/libgpg-error.git
+nss=https://github.com/nss-dev/nss.git
+p11-kit=https://github.com/p11-glue/p11-kit.git
+polkit=https://github.com/freedesktop/polkit.git
+selinux=https://github.com/SELinuxProject/selinux.git
+apparmor=https://gitlab.com/apparmor/apparmor.git
+nettle=https://git.lysator.liu.se/nettle/nettle.git
+libtasn1=https://gitlab.com/gnutls/libtasn1.git
+gnutls=https://gitlab.com/gnutls/gnutls.git
+libcbor=https://github.com/PJK/libcbor.git
+libfido2=https://github.com/Yubico/libfido2.git
+qrencode=https://github.com/fukuchi/libqrencode.git
+
+# Filesystems and block layer
+lvm2=https://github.com/lvmteam/lvm2.git
+btrfs-progs=https://github.com/kdave/btrfs-progs.git
+e2fsprogs=https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git
+xfsprogs=https://git.kernel.org/pub/scm/fs/xfs/xfsprogs-dev.git
+
+# Graphics, display, and input
+mesa=https://gitlab.freedesktop.org/mesa/mesa.git
+libdrm=https://gitlab.freedesktop.org/mesa/drm.git
+xorg-xserver=https://gitlab.freedesktop.org/xorg/xserver.git
+xorgproto=https://gitlab.freedesktop.org/xorg/proto/xorgproto.git
+libxcb=https://gitlab.freedesktop.org/xorg/lib/libxcb.git
+xcb-proto=https://gitlab.freedesktop.org/xorg/proto/xcbproto.git
+libX11=https://gitlab.freedesktop.org/xorg/lib/libx11.git
+libXext=https://gitlab.freedesktop.org/xorg/lib/libxext.git
+libXfixes=https://gitlab.freedesktop.org/xorg/lib/libxfixes.git
+libxshmfence=https://gitlab.freedesktop.org/xorg/lib/libxshmfence.git
+libXxf86vm=https://gitlab.freedesktop.org/xorg/lib/libxxf86vm.git
+libXrandr=https://gitlab.freedesktop.org/xorg/lib/libxrandr.git
+libXrender=https://gitlab.freedesktop.org/xorg/lib/libxrender.git
+libXcursor=https://gitlab.freedesktop.org/xorg/lib/libxcursor.git
+libXi=https://gitlab.freedesktop.org/xorg/lib/libxi.git
+libXinerama=https://gitlab.freedesktop.org/xorg/lib/libxinerama.git
+libXft=https://gitlab.freedesktop.org/xorg/lib/libxft.git
+libfontenc=https://gitlab.freedesktop.org/xorg/lib/libfontenc.git
+libXfont2=https://gitlab.freedesktop.org/xorg/lib/libxfont2.git
+libpciaccess=https://gitlab.freedesktop.org/xorg/lib/libpciaccess.git
+libepoxy=https://github.com/anholt/libepoxy.git
+wayland=https://gitlab.freedesktop.org/wayland/wayland.git
+wayland-protocols=https://gitlab.freedesktop.org/wayland/wayland-protocols.git
+libinput=https://gitlab.freedesktop.org/libinput/libinput.git
+pixman=https://gitlab.freedesktop.org/pixman/pixman.git
+libxkbcommon=https://github.com/xkbcommon/libxkbcommon.git
+freetype=https://gitlab.freedesktop.org/freetype/freetype.git
+fontconfig=https://gitlab.freedesktop.org/fontconfig/fontconfig.git
+harfbuzz=https://github.com/harfbuzz/harfbuzz.git
+fribidi=https://github.com/fribidi/fribidi.git
+graphite2=https://github.com/silnrsi/graphite.git
+cairo=https://gitlab.freedesktop.org/cairo/cairo.git
+libpng=https://github.com/pnggroup/libpng.git
+libjpeg-turbo=https://github.com/libjpeg-turbo/libjpeg-turbo.git
+glslang=https://github.com/KhronosGroup/glslang.git
+spirv-tools=https://github.com/KhronosGroup/SPIRV-Tools.git
+
+# Audio
+alsa-lib=https://github.com/alsa-project/alsa-lib.git
+alsa-utils=https://github.com/alsa-project/alsa-utils.git
+pulseaudio=https://gitlab.freedesktop.org/pulseaudio/pulseaudio.git
+pipewire=https://gitlab.freedesktop.org/pipewire/pipewire.git
+
+# Python runtime and its core deps
+cpython=https://github.com/python/cpython.git
+gdbm=https://git.savannah.gnu.org/git/gdbm.git
+sqlite=https://github.com/sqlite/sqlite.git
+mpdecimal=https://github.com/bytereef/mpdecimal.git
+tcl=https://github.com/tcltk/tcl.git
+tk=https://github.com/tcltk/tk.git
+
+# Package managers and distros
+nixpkgs=https://github.com/NixOS/nixpkgs.git
+nix=https://github.com/NixOS/nix.git
+portage=https://github.com/gentoo/portage.git
+rpm=https://github.com/rpm-software-management/rpm.git
+debian-dpkg=https://git.dpkg.org/git/dpkg/dpkg.git
+apt=https://salsa.debian.org/apt-team/apt.git
+
+# Bootloaders and firmware
+grub=https://git.savannah.gnu.org/git/grub.git
+shim=https://github.com/rhboot/shim.git
+efibootmgr=https://github.com/rhboot/efibootmgr.git
