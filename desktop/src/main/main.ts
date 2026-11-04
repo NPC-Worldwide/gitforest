@@ -16,7 +16,6 @@ export const DAEMON_URL = `http://127.0.0.1:${API_PORT}`;
 const GF_CONFIG_DIR = path.join(os.homedir(), '.config', 'gitforest');
 const GF_DATA_DIR = path.join(os.homedir(), '.local', 'share', 'gitforest');
 const TOKEN_PATH = path.join(GF_DATA_DIR, 'api.token');
-const IDENTITY_PATH = path.join(GF_CONFIG_DIR, 'identity.key');
 const ONBOARDED_PATH = path.join(GF_DATA_DIR, '.onboarded');
 
 let daemonProcess: ChildProcess | null = null;
@@ -145,6 +144,17 @@ export function stopDaemon(): void {
 
 // ---------- generic API proxy (adds bearer token) ----------
 
+export function identityExists(): boolean {
+  const { gitforest } = findBinaries();
+  if (!gitforest) return false;
+  try {
+    execFileSync(gitforest, ['id'], { encoding: 'utf8', timeout: 10000, stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function runInit(): { ok: boolean; error?: string } {
   const { gitforest } = findBinaries();
   if (!gitforest) return { ok: false, error: 'binary-not-found' };
@@ -152,7 +162,7 @@ export function runInit(): { ok: boolean; error?: string } {
   fs.mkdirSync(GF_DATA_DIR, { recursive: true });
   try {
     execFileSync(gitforest, ['init'], { encoding: 'utf8', timeout: 15000, stdio: 'pipe' });
-    return fs.existsSync(IDENTITY_PATH) ? { ok: true } : { ok: false, error: 'identity file missing after init' };
+    return identityExists() ? { ok: true } : { ok: false, error: 'identity file missing after init' };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
@@ -265,7 +275,7 @@ ipcMain.handle('gf:daemon-restart', async () => {
 
 ipcMain.handle('gf:api', async (_e, route: string, opts?: ProxyOptions) => apiFetch(route, opts));
 
-ipcMain.handle('gf:identity-exists', async () => fs.existsSync(IDENTITY_PATH));
+ipcMain.handle('gf:identity-exists', async () => identityExists());
 
 ipcMain.handle('gf:init-identity', async () => runInit());
 
