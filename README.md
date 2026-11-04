@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="desktop/gitforest.png?v=2" alt="gitforest logo" width="200">
+  <img src="desktop/gitforest.png?v=3" alt="gitforest logo" width="200">
 </p>
 
 <h1 align="center">gitforest</h1>
