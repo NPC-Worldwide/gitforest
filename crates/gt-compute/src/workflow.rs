@@ -77,7 +77,8 @@ fn is_local_composite_ref(uses: &str) -> bool {
     if uses.starts_with("./") || uses.starts_with("../") {
         return true;
     }
-    uses.starts_with('/') && (uses.ends_with(".yml") || uses.ends_with(".yaml"))
+    let action_file = uses.ends_with(".yml") || uses.ends_with(".yaml");
+    action_file && (uses.starts_with('/') || std::path::Path::new(uses).is_absolute())
 }
 
 struct CompositeAction {
@@ -4622,6 +4623,23 @@ runs:
         let workflow = parse_workflow_file(&root.join("caller.yml")).unwrap();
         assert!(resolve_and_expand(&workflow).is_err());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn local_composite_ref_matches_relative_and_absolute_action_paths() {
+        assert!(is_local_composite_ref("./action.yml"));
+        assert!(is_local_composite_ref("../actions/near/action.yml"));
+        assert!(is_local_composite_ref("/tmp/x/action.yml"));
+        assert!(is_local_composite_ref("/tmp/x/action.yaml"));
+        assert!(!is_local_composite_ref("actions/checkout"));
+        assert!(!is_local_composite_ref("gitforest/llm"));
+        assert!(!is_local_composite_ref("/tmp/x/action.txt"));
+        #[cfg(windows)]
+        {
+            assert!(is_local_composite_ref("C:\\tmp\\x\\action.yml"));
+            assert!(is_local_composite_ref("C:/tmp/x/action.yml"));
+            assert!(!is_local_composite_ref("C:\\tmp\\x\\action.txt"));
+        }
     }
 
     #[test]

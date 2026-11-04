@@ -1365,7 +1365,8 @@ struct CloneRepoRequest {
 }
 
 fn clone_target_name(url: &str) -> Option<String> {
-    let trimmed = url.trim().trim_end_matches('/');
+    let normalized = url.replace('\\', "/");
+    let trimmed = normalized.trim().trim_end_matches('/');
     if trimmed.split('/').any(|c| c == "..") {
         return None;
     }
@@ -7776,8 +7777,17 @@ mod tests {
             Some("myrepo".to_string())
         );
         assert_eq!(clone_target_name("file:///tmp/x/"), Some("x".to_string()));
+        assert_eq!(
+            clone_target_name("file://C:\\repos\\myrepo"),
+            Some("myrepo".to_string())
+        );
+        assert_eq!(
+            clone_target_name("file://C:\\repos\\myrepo.git"),
+            Some("myrepo".to_string())
+        );
         assert_eq!(clone_target_name("https://example.com/"), None);
         assert_eq!(clone_target_name("https://example.com/../x"), None);
+        assert_eq!(clone_target_name("file://C:\\repos\\..\\x"), None);
         assert!(clone_url_scheme_ok("https://example.com/a"));
         assert!(clone_url_scheme_ok("gitforest://p/r"));
         assert!(clone_url_scheme_ok("file:///tmp/r"));
@@ -7810,7 +7820,7 @@ mod tests {
         let headers = axum::http::HeaderMap::new();
         let parent = tmp.join("clones");
         std::fs::create_dir_all(&parent).unwrap();
-        let url = format!("file://{}", src.display());
+        let url = format!("file://{}", src.to_str().unwrap().replace('\\', "/"));
         let Json(ok) = clone_repo(
             State(state.clone()),
             headers.clone(),
@@ -11207,6 +11217,34 @@ jobs:
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    #[cfg(unix)]
+    fn stub_infer_backend(
+        dir: &std::path::Path,
+        unix_body: &str,
+        _windows_body: &str,
+    ) -> std::path::PathBuf {
+        let backend = dir.join("fake-llama");
+        std::fs::write(&backend, format!("#!/bin/sh\n{unix_body}\n")).unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&backend).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&backend, perms).unwrap();
+        }
+        backend
+    }
+
+    #[cfg(windows)]
+    fn stub_infer_backend(
+        dir: &std::path::Path,
+        _unix_body: &str,
+        windows_body: &str,
+    ) -> std::path::PathBuf {
+        let backend = dir.join("fake-llama.bat");
+        std::fs::write(&backend, format!("@echo off\n{windows_body}\n")).unwrap();
+        backend
+    }
+
     #[tokio::test]
     async fn test_infer_runs_stub_backend_over_materialized_model() {
         let (state, tmp, _rx) = test_state("model-infer");
@@ -11224,15 +11262,11 @@ jobs:
             manifest
         };
         let manifest_id = manifest.id.clone();
-        let backend = tmp.join("fake-llama");
-        std::fs::write(&backend, "#!/bin/sh\necho 'stub completion for test'\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(&backend).unwrap().permissions();
-            perms.set_mode(0o755);
-            std::fs::set_permissions(&backend, perms).unwrap();
-        }
+        let backend = stub_infer_backend(
+            &tmp,
+            "echo 'stub completion for test'",
+            "echo stub completion for test",
+        );
         {
             let mut s = state.write().await;
             s.collection_store.add(manifest);
@@ -11314,15 +11348,11 @@ jobs:
             manifest
         };
         let manifest_id = manifest.id.clone();
-        let backend = tmp.join("fake-llama");
-        std::fs::write(&backend, "#!/bin/sh\necho 'stub completion for test'\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(&backend).unwrap().permissions();
-            perms.set_mode(0o755);
-            std::fs::set_permissions(&backend, perms).unwrap();
-        }
+        let backend = stub_infer_backend(
+            &tmp,
+            "echo 'stub completion for test'",
+            "echo stub completion for test",
+        );
         {
             let mut s = state.write().await;
             s.collection_store.add(manifest);
@@ -11376,19 +11406,11 @@ jobs:
             manifest
         };
         let manifest_id = manifest.id.clone();
-        let backend = tmp.join("fake-llama");
-        std::fs::write(
-            &backend,
-            "#!/bin/sh\nprintf 'stub '\nsleep 1\nprintf 'completion stream'\n",
-        )
-        .unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(&backend).unwrap().permissions();
-            perms.set_mode(0o755);
-            std::fs::set_permissions(&backend, perms).unwrap();
-        }
+        let backend = stub_infer_backend(
+            &tmp,
+            "printf 'stub '\nsleep 1\nprintf 'completion stream'",
+            "set /p=\"stub \" <nul\nping -n 2 127.0.0.1 >nul\nset /p=\"completion stream\" <nul",
+        );
         {
             let mut s = state.write().await;
             s.collection_store.add(manifest);
@@ -12695,15 +12717,11 @@ jobs:
             manifest
         };
         let manifest_id = manifest.id.clone();
-        let backend = tmp.join("fake-llama");
-        std::fs::write(&backend, "#!/bin/sh\necho 'stub completion for test'\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(&backend).unwrap().permissions();
-            perms.set_mode(0o755);
-            std::fs::set_permissions(&backend, perms).unwrap();
-        }
+        let backend = stub_infer_backend(
+            &tmp,
+            "echo 'stub completion for test'",
+            "echo stub completion for test",
+        );
         {
             let mut s = state.write().await;
             s.collection_store.add(manifest);
