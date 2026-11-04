@@ -75,12 +75,49 @@ jobs:
   build-macos:
     needs: [gates]
     runs-on: macos-latest
+    env:
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Require Apple signing secrets
+        run: |
+          missing=0
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!v}" ]; then echo "::error::missing required secret $v (Apple code signing)"; missing=1; fi
+          done
+          [ "$missing" = 0 ] || exit 1
+      - name: Import Apple signing certificate
+        run: |
+          echo "$CSC_LINK" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          KEYCHAIN="$RUNNER_TEMP/build.keychain"
+          security create-keychain -p actions "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p actions "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions "$KEYCHAIN"
+          rm "$RUNNER_TEMP/cert.p12"
       - run: cargo build --workspace --release
+      - name: Sign CLI binaries
+        run: |
+          for bin in gitforest git-remote-gitforest gtfo gitforest-mcp; do
+            [ -f "target/release/$bin" ] || continue
+            codesign --sign "Developer ID Application" --entitlements desktop/build/entitlements.cli.plist --timestamp --options runtime -f "target/release/$bin"
+          done
+          codesign -dv --verbose=4 target/release/gitforest 2>&1 | grep -q "Authority=Developer ID Application" || exit 1
       - run: sh scripts/dist.sh "${GITHUB_REF_NAME#v}" macos-arm64
+      - name: Notarize CLI binaries
+        run: |
+          ditto -c -k --keepParent dist/gitforest gitforest-macos-arm64-notary.zip
+          xcrun notarytool submit gitforest-macos-arm64-notary.zip --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          rm gitforest-macos-arm64-notary.zip
+      - name: Verify Gatekeeper acceptance
+        run: spctl -a -vv --type exec target/release/gitforest
       - uses: actions/upload-artifact@v4
         with:
           name: gitforest-macos-arm64
@@ -170,7 +207,11 @@ jobs:
     needs: [gates]
     runs-on: macos-latest
     env:
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -180,7 +221,30 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: desktop/package-lock.json
+      - name: Require Apple signing secrets
+        run: |
+          missing=0
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!v}" ]; then echo "::error::missing required secret $v (Apple code signing)"; missing=1; fi
+          done
+          [ "$missing" = 0 ] || exit 1
+      - name: Import Apple signing certificate
+        run: |
+          echo "$CSC_LINK" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          KEYCHAIN="$RUNNER_TEMP/build.keychain"
+          security create-keychain -p actions "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p actions "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions "$KEYCHAIN"
+          rm "$RUNNER_TEMP/cert.p12"
       - run: cargo build -p gt-daemon -p gt-remote --release
+      - name: Sign bundled CLI binaries
+        run: |
+          for bin in gitforest git-remote-gitforest gtfo; do
+            [ -f "target/release/$bin" ] || continue
+            codesign --sign "Developer ID Application" --entitlements desktop/build/entitlements.cli.plist --timestamp --options runtime -f "target/release/$bin"
+          done
       - run: npm ci
         working-directory: desktop
       - run: npm run build
