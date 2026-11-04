@@ -11409,7 +11409,7 @@ jobs:
         let backend = stub_infer_backend(
             &tmp,
             "printf 'stub '\nsleep 1\nprintf 'completion stream'",
-            "set /p=\"stub \" <nul\nping -n 2 127.0.0.1 >nul\nset /p=\"completion stream\" <nul",
+            "set /p=\"stub \" <nul\nping -n 2 127.0.0.1 >nul\nset /p=\"completion stream\" <nul\nexit /b 0",
         );
         {
             let mut s = state.write().await;
