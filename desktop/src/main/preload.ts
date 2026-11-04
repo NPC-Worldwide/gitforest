@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
 export interface IGitforestAPI {
   api: (route: string, opts?: { method?: string; body?: unknown }) => Promise<any>;
-  daemonState: () => Promise<{ running: boolean; owned: boolean }>;
+  daemonState: () => Promise<{ running: boolean; owned: boolean; daemonVersion?: string | null; appVersion?: string }>;
   daemonStart: () => Promise<{ ok: boolean; reason?: string }>;
   daemonStop: () => Promise<{ ok: boolean }>;
   daemonRestart: () => Promise<{ ok: boolean; reason?: string }>;

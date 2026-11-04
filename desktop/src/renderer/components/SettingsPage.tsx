@@ -16,14 +16,21 @@ export default function SettingsPage() {
   const [dlError, setDlError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [ds, l, dd, cd] = await Promise.all([
-      window.gf.daemonState(),
-      window.gf.readLog(30),
-      window.gf.dataDir(),
-      window.gf.configDir(),
-    ]);
+    let ds: any; let l: any; let dd: any; let cd: any;
+    try {
+      [ds, l, dd, cd] = await Promise.all([
+        window.gf.daemonState(),
+        window.gf.readLog(30),
+        window.gf.dataDir(),
+        window.gf.configDir(),
+      ]);
+    } catch (e) {
+      console.error('[gf:settings] load threw', e);
+      return;
+    }
     setDaemonRunning(ds.running);
     if (l.ok) setLog(l.data || '');
+    else console.error('[gf:settings] read log failed', l);
     setDataDir(dd);
     setConfigDir(cd);
   }, []);

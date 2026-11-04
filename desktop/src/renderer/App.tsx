@@ -16,22 +16,37 @@ export default function App() {
   const [state, setState] = useState<AppState>('loading');
   const [page, setPage] = useState<Page>('repos');
   const [identityExists, setIdentityExists] = useState(false);
+  const [appVersion, setAppVersion] = useState('');
+  const [daemonVersion, setDaemonVersion] = useState<string | null>(null);
+  const [daemonOwned, setDaemonOwned] = useState(true);
 
   const check = useCallback(async () => {
     if (!window.gf) { setState('loading'); return; }
-    const ds = await window.gf.daemonState();
-    if (!ds.running) {
-      setIdentityExists(await window.gf.identityExists());
+    try {
+      const ds = await window.gf.daemonState();
+      console.log('[gf:app] daemon state', { running: ds.running, app: ds.appVersion, daemon: ds.daemonVersion, owned: ds.owned });
+      setAppVersion(ds.appVersion || '');
+      setDaemonVersion(typeof ds.daemonVersion === 'string' ? ds.daemonVersion : null);
+      setDaemonOwned(ds.owned !== false);
+      if (!ds.running) {
+        setIdentityExists(await window.gf.identityExists());
+        setState('daemon-down');
+        return;
+      }
+      const onboarded = await window.gf.onboardedGet();
+      setState(onboarded ? 'ready' : 'first-run');
+    } catch (e) {
+      console.error('[gf:app] daemon state check threw', e);
       setState('daemon-down');
-      return;
     }
-    const onboarded = await window.gf.onboardedGet();
-    setState(onboarded ? 'ready' : 'first-run');
   }, []);
+
+  const versionMismatch = state === 'ready' && !!appVersion && daemonVersion !== appVersion;
 
   useEffect(() => {
     check();
     const unsub = window.gf?.onDaemonStateChange?.((s) => {
+      console.log('[gf:app] daemon state changed', s);
       if (!s.running) setState('daemon-down'); else check();
     });
     return () => { unsub?.(); };
@@ -52,8 +67,33 @@ export default function App() {
         )}
         {state === 'ready' && (
           <>
-            <Sidebar page={page} onNavigate={setPage} />
-            <div className="flex-1 overflow-auto theme-bg-primary">
+            <Sidebar page={page} onNavigate={setPage} appVersion={appVersion} daemonVersion={daemonVersion} />
+            <div className="flex-1 overflow-auto theme-bg-primary flex flex-col">
+              {versionMismatch && (
+                <div className="flex items-center justify-between gap-3 px-4 py-2 bg-amber-900/40 border-b border-amber-700 text-xs">
+                  <span className="text-amber-200">
+                    Daemon v{daemonVersion || '?'} doesn't match app v{appVersion}.
+                    {daemonOwned ? ' Restart it to pick up the bundled daemon.' : ' It was started outside the app — restart it to match.'}
+                  </span>
+                  {daemonOwned && (
+                    <button
+                      onClick={async () => {
+                        console.log('[gf:app] daemon restart requested (version mismatch)', { app: appVersion, daemon: daemonVersion });
+                        try {
+                          const r = await window.gf.daemonRestart();
+                          console.log('[gf:app] daemon restart result', r);
+                        } catch (e) {
+                          console.error('[gf:app] daemon restart threw', e);
+                        }
+                        check();
+                      }}
+                      className="flex-shrink-0 bg-amber-600 hover:bg-amber-700 text-white rounded px-3 py-1"
+                    >
+                      Restart daemon
+                    </button>
+                  )}
+                </div>
+              )}
               {page === 'repos' && <ReposPage />}
               {page === 'network' && <NetworkPage />}
               {page === 'analytics' && <AnalyticsPage />}

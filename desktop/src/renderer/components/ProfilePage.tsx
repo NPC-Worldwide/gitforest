@@ -10,14 +10,23 @@ export default function ProfilePage() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [id, p] = await Promise.all([
-      window.gf.api('/api/id'),
-      window.gf.api('/api/profile'),
-    ]);
+    let id: any; let p: any;
+    try {
+      [id, p] = await Promise.all([
+        window.gf.api('/api/id'),
+        window.gf.api('/api/profile'),
+      ]);
+    } catch (e) {
+      console.error('[gf:profile] load threw', e);
+      return;
+    }
     if (id.ok) setPeerId(id.data?.peer_id || id.data || '');
+    else console.error('[gf:profile] /api/id failed', { status: id.status, error: id.error });
     if (p.ok && p.data) {
       setProfile(p.data);
       if (p.data.display_name) setDisplayName(p.data.display_name);
+    } else if (!p.ok) {
+      console.error('[gf:profile] /api/profile failed', { status: p.status, error: p.error });
     }
   }, []);
 
@@ -26,34 +35,69 @@ export default function ProfilePage() {
   const publishName = async () => {
     setBusy(true);
     setMsg(null);
-    const res = await window.gf.api('/api/profile', { method: 'POST', body: { display_name: displayName } });
-    setBusy(false);
-    setMsg(res.ok ? 'Display name saved on this machine.' : (res.error || 'Could not save display name.'));
+    console.log('[gf:profile] publish display name', { displayName });
+    try {
+      const res = await window.gf.api('/api/profile', { method: 'POST', body: { display_name: displayName } });
+      setBusy(false);
+      if (res.ok) {
+        console.log('[gf:profile] display name saved');
+        setMsg('Display name saved on this machine.');
+      } else {
+        console.error('[gf:profile] display name save failed', { status: res.status, error: res.error, data: res.data });
+        setMsg(String(res.error || (res.data as any)?.error || 'Could not save display name.'));
+      }
+    } catch (e) {
+      setBusy(false);
+      console.error('[gf:profile] display name save threw', e);
+      setMsg(`Could not save display name: ${(e as Error).message}`);
+    }
   };
 
   const exportBackup = async () => {
     setBusy(true);
-    const pick = await window.gf.pickSavePath('gitforest-identity-backup.enc');
-    if (pick.canceled || !pick.filePath) { setBusy(false); return; }
-    const res = await window.gf.api('/api/identity/export', { method: 'POST', body: { path: pick.filePath } });
-    setBusy(false);
-    setMsg(res.ok ? `Backup written to ${pick.filePath}` : (res.error || 'Identity export failed.'));
+    try {
+      const pick = await window.gf.pickSavePath('gitforest-identity-backup.enc');
+      if (pick.canceled || !pick.filePath) { setBusy(false); return; }
+      console.log('[gf:profile] identity export started', { path: pick.filePath });
+      const res = await window.gf.api('/api/identity/export', { method: 'POST', body: { path: pick.filePath } });
+      setBusy(false);
+      if (res.ok) {
+        console.log('[gf:profile] identity export ok');
+        setMsg(`Backup written to ${pick.filePath}`);
+      } else {
+        console.error('[gf:profile] identity export failed', { status: res.status, error: res.error, data: res.data });
+        setMsg(String(res.error || (res.data as any)?.error || 'Identity export failed.'));
+      }
+    } catch (e) {
+      setBusy(false);
+      console.error('[gf:profile] identity export threw', e);
+      setMsg(`Identity export failed: ${(e as Error).message}`);
+    }
   };
 
   const restoreBackup = async () => {
     if (!confirm('Restoring replaces your current identity on this machine. You will lose access to it unless you exported a backup first. Continue?')) return;
-    const pick = await window.gf.pickFile();
-    if (pick.canceled || !pick.filePaths?.[0]) return;
-    setBusy(true);
-    const res = await window.gf.api('/api/identity/import', { method: 'POST', body: { path: pick.filePaths[0] } });
-    if (res.ok) {
-      setMsg(`Identity restored (now ${res.data?.peer_id || 'unknown'}). Restarting daemon…`);
-      await window.gf.daemonRestart();
-      setMsg(`Identity restored (now ${res.data?.peer_id || 'unknown'}). Daemon restarted.`);
-    } else {
-      setMsg(res.error || res.data?.error || 'Identity import failed.');
+    try {
+      const pick = await window.gf.pickFile();
+      if (pick.canceled || !pick.filePaths?.[0]) return;
+      setBusy(true);
+      console.log('[gf:profile] identity import started', { path: pick.filePaths[0] });
+      const res = await window.gf.api('/api/identity/import', { method: 'POST', body: { path: pick.filePaths[0] } });
+      if (res.ok) {
+        console.log('[gf:profile] identity import ok, restarting daemon', { peer_id: (res.data as any)?.peer_id });
+        setMsg(`Identity restored (now ${res.data?.peer_id || 'unknown'}). Restarting daemon…`);
+        await window.gf.daemonRestart();
+        setMsg(`Identity restored (now ${res.data?.peer_id || 'unknown'}). Daemon restarted.`);
+      } else {
+        console.error('[gf:profile] identity import failed', { status: res.status, error: res.error, data: res.data });
+        setMsg(String(res.error || (res.data as any)?.error || 'Identity import failed.'));
+      }
+      setBusy(false);
+    } catch (e) {
+      setBusy(false);
+      console.error('[gf:profile] identity import threw', e);
+      setMsg(`Identity import failed: ${(e as Error).message}`);
     }
-    setBusy(false);
   };
 
   return (

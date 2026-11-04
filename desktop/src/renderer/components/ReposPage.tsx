@@ -69,13 +69,22 @@ export default function ReposPage() {
   };
 
   const load = useCallback(async () => {
-    const [r, id] = await Promise.all([window.gf.api('/api/repos'), window.gf.api('/api/id')]);
+    let r: any; let id: any;
+    try {
+      [r, id] = await Promise.all([window.gf.api('/api/repos'), window.gf.api('/api/id')]);
+    } catch (e) {
+      console.error('[gf:repos] load threw', e);
+      return [];
+    }
     let list: Repo[] = [];
     if (r.ok) {
       list = Array.isArray(r.data) ? r.data : r.data?.repos || [];
       setRepos(list);
+    } else {
+      console.error('[gf:repos] /api/repos failed', { status: r.status, error: r.error });
     }
     if (id.ok) setPeerId(id.data?.peer_id || id.data || '');
+    else console.error('[gf:repos] /api/id failed', { status: id.status, error: id.error });
     return list;
   }, []);
 

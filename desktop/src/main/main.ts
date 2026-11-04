@@ -134,8 +134,40 @@ function spawnDaemon(): boolean {
   return true;
 }
 
+async function daemonStatusVersion(): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 1500);
+    const res = await fetch(`${DAEMON_URL}/api/status`, { signal: controller.signal });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    return typeof data?.version === 'string' ? data.version : null;
+  } catch {
+    return null;
+  }
+}
+
+function versionsMatch(a: string | null, b: string): boolean {
+  if (!a) return false;
+  return a.replace(/^v/, '') === b.replace(/^v/, '');
+}
+
 export async function ensureDaemon(): Promise<{ ok: boolean; reason?: string }> {
-  if (await daemonHealthy()) return { ok: true };
+  if (await daemonHealthy()) {
+    const dv = await daemonStatusVersion();
+    if (versionsMatch(dv, APP_VERSION)) return { ok: true };
+    console.log(`[gf:main] daemon version ${dv ?? 'unknown'} does not match app ${APP_VERSION} (owned=${weOwnDaemon})`);
+    if (!weOwnDaemon) return { ok: true, reason: 'version-mismatch-external' };
+    stopDaemon();
+    await new Promise(r => setTimeout(r, 1200));
+    if (!spawnDaemon()) return { ok: false, reason: 'binary-not-found' };
+    const up = await waitForDaemon();
+    if (!up) return { ok: false, reason: 'startup-timeout' };
+    const dv2 = await daemonStatusVersion();
+    console.log(`[gf:main] daemon restarted, now at version ${dv2 ?? 'unknown'}`);
+    return { ok: true };
+  }
   if (!spawnDaemon()) return { ok: false, reason: 'binary-not-found' };
   const up = await waitForDaemon();
   return up ? { ok: true } : { ok: false, reason: 'startup-timeout' };
@@ -269,29 +301,49 @@ app.on('window-all-closed', () => {
 
 // ---------- IPC ----------
 
-ipcMain.handle('gf:daemon-state', async () => ({
-  running: await daemonHealthy(),
-  owned: weOwnDaemon,
-}));
+ipcMain.handle('gf:daemon-state', async () => {
+  const running = await daemonHealthy();
+  return {
+    running,
+    owned: weOwnDaemon,
+    daemonVersion: running ? await daemonStatusVersion() : null,
+    appVersion: APP_VERSION,
+  };
+});
 
-ipcMain.handle('gf:daemon-start', async () => ensureDaemon());
+ipcMain.handle('gf:daemon-start', async () => {
+  console.log('[gf:main] daemon start requested');
+  const r = await ensureDaemon();
+  console.log('[gf:main] daemon start result', r);
+  return r;
+});
 
 ipcMain.handle('gf:daemon-stop', async () => {
+  console.log('[gf:main] daemon stop requested');
   stopDaemon();
   return { ok: true };
 });
 
 ipcMain.handle('gf:daemon-restart', async () => {
+  console.log('[gf:main] daemon restart requested');
   stopDaemon();
   await new Promise(r => setTimeout(r, 1200));
-  return ensureDaemon();
+  const r = await ensureDaemon();
+  console.log('[gf:main] daemon restart result', r);
+  return r;
 });
 
 ipcMain.handle('gf:api', async (_e, route: string, opts?: ProxyOptions) => apiFetch(route, opts));
 
 ipcMain.handle('gf:identity-exists', async () => identityExists());
 
-ipcMain.handle('gf:init-identity', async () => runInit());
+ipcMain.handle('gf:init-identity', async () => {
+  console.log('[gf:main] identity init requested');
+  const r = await runInit();
+  if ((r as any).ok) console.log('[gf:main] identity init ok');
+  else console.error('[gf:main] identity init failed', r);
+  return r;
+});
 
 ipcMain.handle('gf:onboarded-get', async () => isOnboarded());
 

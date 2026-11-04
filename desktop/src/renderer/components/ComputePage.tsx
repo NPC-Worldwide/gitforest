@@ -33,26 +33,40 @@ export default function ComputePage() {
   const [jobLogs, setJobLogs] = useState<Record<string, { loading: boolean; exitCode?: number; usage?: string; stdout?: string; stderr?: string; error?: string }>>({});
 
   const load = useCallback(async () => {
-    const [j, o, w, c] = await Promise.all([
-      window.gf.api('/api/compute/jobs'),
-      window.gf.api('/api/compute/offers'),
-      window.gf.api('/api/compute/worker'),
-      window.gf.api('/api/compute/credit'),
-    ]);
+    let j: any; let o: any; let w: any; let c: any;
+    try {
+      [j, o, w, c] = await Promise.all([
+        window.gf.api('/api/compute/jobs'),
+        window.gf.api('/api/compute/offers'),
+        window.gf.api('/api/compute/worker'),
+        window.gf.api('/api/compute/credit'),
+      ]);
+    } catch (e) {
+      console.error('[gf:compute] load threw', e);
+      return;
+    }
     if (j.ok) setJobs(Array.isArray(j.data) ? j.data : j.data?.jobs || []);
+    else console.error('[gf:compute] /api/compute/jobs failed', { status: j.status, error: j.error });
     if (o.ok) setOffers(Array.isArray(o.data) ? o.data : o.data?.offers || []);
+    else console.error('[gf:compute] /api/compute/offers failed', { status: o.status, error: o.error });
     if (w.ok && typeof w.data?.worker_enabled === 'boolean') setWorkerActive(w.data.worker_enabled);
+    else if (!w.ok) console.error('[gf:compute] /api/compute/worker failed', { status: w.status, error: w.error });
     if (c.ok && c.data && typeof c.data === 'object') setCredit(c.data as any);
+    else if (!c.ok) console.error('[gf:compute] /api/compute/credit failed', { status: c.status, error: c.error });
   }, []);
 
   useEffect(() => { load(); const t = setInterval(load, 8000); return () => clearInterval(t); }, [load]);
 
   useEffect(() => {
     window.gf.api('/api/repos').then((r: any) => {
+      if (!r.ok) {
+        console.error('[gf:compute] repo list for submit form failed', { status: r.status, error: r.error });
+        return;
+      }
       const list = Array.isArray(r.data) ? r.data : r.data?.repos || [];
       setRepos(list);
       if (list.length > 0) setRepo(list[0].name);
-    }).catch(() => {});
+    }).catch((e) => console.error('[gf:compute] repo list for submit form threw', e));
   }, []);
 
   useEffect(() => {
@@ -65,7 +79,7 @@ export default function ComputePage() {
         setYaml('');
         setYamlHint('No .gitforest-ci.yml in this repo — paste job config here');
       }
-    }).catch(() => {});
+    }).catch((e) => console.error('[gf:compute] ci-config prefill threw', e));
   }, [repo]);
 
   const submitJob = async () => {
@@ -73,6 +87,7 @@ export default function ComputePage() {
     setSubmitBusy(true);
     setSubmitError('');
     setSubmitResult(null);
+    console.log('[gf:compute] submit job', { repo, commit: commit || 'HEAD', sats, chain });
     try {
       const res = await window.gf.api('/api/compute/jobs', {
         method: 'POST',
@@ -85,14 +100,18 @@ export default function ComputePage() {
         },
       });
       if (res.ok) {
+        console.log('[gf:compute] submit job ok', res.data);
         setSubmitResult({ id: res.data?.id || '?', status: res.data?.status || 'Pending', warning: res.data?.warning });
         load();
       } else if (res.status === 402) {
+        console.error('[gf:compute] submit job failed: credit exhausted', res.data);
         setSubmitError('Mutual credit exhausted — offer this machine as a worker to earn credit, or configure a money backend.');
       } else {
+        console.error('[gf:compute] submit job failed', { status: res.status, error: res.error, data: res.data });
         setSubmitError(res.data?.message || res.error || `Request failed (HTTP ${res.status})`);
       }
     } catch (e: any) {
+      console.error('[gf:compute] submit job threw', e);
       setSubmitError(e?.message || 'Request failed');
     } finally {
       setSubmitBusy(false);
@@ -102,17 +121,21 @@ export default function ComputePage() {
   const cancelJob = async (jobId: string) => {
     if (!jobId || cancelBusy) return;
     setCancelBusy(jobId);
+    console.log('[gf:compute] cancel job', { jobId });
     try {
       const res = await window.gf.api(`/api/compute/jobs/${encodeURIComponent(jobId)}/cancel`, {
         method: 'POST',
       });
       if (!res.ok) {
+        console.error('[gf:compute] cancel job failed', { jobId, status: res.status, error: res.error, data: res.data });
         setError(res.data?.message || res.error || `Cancel failed (HTTP ${res.status})`);
       } else {
+        console.log('[gf:compute] cancel job ok', { jobId });
         setError('');
       }
       load();
     } catch (e: any) {
+      console.error('[gf:compute] cancel job threw', { jobId, error: e });
       setError(e?.message || 'Cancel failed');
     } finally {
       setCancelBusy(null);
@@ -134,6 +157,7 @@ export default function ComputePage() {
       const res = await window.gf.api(`/api/compute/jobs/${encodeURIComponent(jobId)}`);
       const result = res.ok ? (res.data as any)?.result : null;
       if (!result) {
+        if (!res.ok) console.error('[gf:compute] job detail failed', { jobId, status: res.status, error: res.error });
         setJobLogs((prev) => ({ ...prev, [jobId]: { loading: false, error: 'No result yet' } }));
         return;
       }
@@ -156,16 +180,21 @@ export default function ComputePage() {
   const toggleWorker = async () => {
     setWorkerBusy(true);
     setError('');
+    const action = workerActive ? 'stop' : 'start';
+    console.log('[gf:compute] worker toggle', { action });
     try {
       const route = workerActive ? '/api/compute/worker/stop' : '/api/compute/worker/start';
       const res = await window.gf.api(route, { method: 'POST', body: workerActive ? {} : { cpu: 4, ram_mb: 8192, rate_sats: 1000 } });
       if (res.ok && res.data?.status !== 'error') {
+        console.log('[gf:compute] worker toggle ok', { action, data: res.data });
         if (typeof res.data?.worker_enabled === 'boolean') setWorkerActive(res.data.worker_enabled);
         else setWorkerActive(!workerActive);
       } else {
+        console.error('[gf:compute] worker toggle failed', { action, status: res.status, error: res.error, data: res.data });
         setError(res.data?.message || res.error || `Request failed (HTTP ${res.status})`);
       }
     } catch (e: any) {
+      console.error('[gf:compute] worker toggle threw', { action, error: e });
       setError(e?.message || 'Request failed');
     } finally {
       setWorkerBusy(false);

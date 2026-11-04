@@ -10,19 +10,26 @@ export default function AnalyticsPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const load = useCallback(async () => {
-    // Server-side /api/analytics/* feeds the summary and chart; the client-side
-    // rolling buffer stays as a fallback for older daemons and fresh histories.
-    const [s, p, sum, hist] = await Promise.all([
-      window.gf.api('/api/status'),
-      window.gf.api('/api/peers'),
-      window.gf.api('/api/analytics/summary'),
-      window.gf.api('/api/analytics/history?window=24h'),
-    ]);
+    let s: any; let p: any; let sum: any; let hist: any;
+    try {
+      [s, p, sum, hist] = await Promise.all([
+        window.gf.api('/api/status'),
+        window.gf.api('/api/peers'),
+        window.gf.api('/api/analytics/summary'),
+        window.gf.api('/api/analytics/history?window=24h'),
+      ]);
+    } catch (e) {
+      console.error('[gf:analytics] load threw', e);
+      return;
+    }
     const peerCount = p.ok ? (Array.isArray(p.data) ? p.data.length : p.data?.peers?.length || 0) : 0;
     setLocalHistory((h) => [...h.slice(-287), { t: Date.now(), peers: peerCount }]);
     if (s.ok) setSummary((prev: any) => ({ ...prev, ...s.data }));
+    else console.error('[gf:analytics] /api/status failed', { status: s.status, error: s.error });
     if (sum.ok) setSummary((prev: any) => ({ ...prev, ...sum.data }));
+    else console.error('[gf:analytics] /api/analytics/summary failed', { status: sum.status, error: sum.error });
     if (hist.ok && Array.isArray(hist.data)) setHistory(hist.data);
+    else if (!hist.ok) console.error('[gf:analytics] /api/analytics/history failed', { status: hist.status, error: hist.error });
   }, []);
 
   useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, [load]);

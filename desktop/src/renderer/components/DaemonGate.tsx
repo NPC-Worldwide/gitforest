@@ -8,28 +8,39 @@ export default function DaemonGate({ onReady, needsIdentity }: { onReady: () => 
   const start = async () => {
     setBusy(true);
     setError(null);
-    if (needsIdentity) {
-      const init = await window.gf.initIdentity();
-      if (!init.ok) {
-        setBusy(false);
-        setError(
-          init.error === 'binary-not-found'
-            ? 'gitforest binary not found. Reinstall the app or build with cargo build --release.'
-            : `Could not create identity: ${init.error || 'unknown error'}`
-        );
-        return;
+    console.log('[gf:gate] start requested', { needsIdentity });
+    try {
+      if (needsIdentity) {
+        const init = await window.gf.initIdentity();
+        if (!init.ok) {
+          setBusy(false);
+          console.error('[gf:gate] identity init failed', init);
+          setError(
+            init.error === 'binary-not-found'
+              ? 'gitforest binary not found. Reinstall the app or build with cargo build --release.'
+              : `Could not create identity: ${init.error || 'unknown error'}`
+          );
+          return;
+        }
+        console.log('[gf:gate] identity init ok');
       }
-    }
-    const res = await window.gf.daemonStart();
-    setBusy(false);
-    if (res.ok) {
-      onReady();
-    } else {
-      setError(
-        res.reason === 'binary-not-found'
-          ? 'gitforest binary not found. Install it (install.sh) or build with cargo build --release.'
-          : 'Daemon failed to start within the timeout window.'
-      );
+      const res = await window.gf.daemonStart();
+      setBusy(false);
+      if (res.ok) {
+        console.log('[gf:gate] daemon started');
+        onReady();
+      } else {
+        console.error('[gf:gate] daemon start failed', res);
+        setError(
+          res.reason === 'binary-not-found'
+            ? 'gitforest binary not found. Install it (install.sh) or build with cargo build --release.'
+            : 'Daemon failed to start within the timeout window.'
+        );
+      }
+    } catch (e) {
+      setBusy(false);
+      console.error('[gf:gate] start threw', e);
+      setError(`Could not start daemon: ${(e as Error).message}`);
     }
   };
 

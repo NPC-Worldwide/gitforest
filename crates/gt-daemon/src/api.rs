@@ -2220,6 +2220,7 @@ async fn get_status(State(state): State<Arc<RwLock<AppState>>>) -> Json<serde_js
     let peer_name = gt_core::identity::load_display_name()
         .map(|name| gt_core::identity::PeerName::new(name, peer_id.clone()).short_tag());
     Json(serde_json::json!({
+        "version": env!("CARGO_PKG_VERSION"),
         "peer_id": peer_id.to_string(),
         "peer_name": peer_name,
         "repos_hosted": state.config.repos.len(),

@@ -21,39 +21,56 @@ export default function FirstRunWizard({ onComplete }: { onComplete: () => void 
   const genIdentity = async () => {
     setBusy(true);
     setError(null);
-    const res = await window.gf.api('/api/id');
-    setBusy(false);
-    if (res.ok && res.data?.peer_id) {
-      setPeerId(res.data.peer_id);
-      setStep('backup');
-    } else if (res.ok && typeof res.data === 'string') {
-      setPeerId(res.data);
-      setStep('backup');
-    } else {
-      setError(res.error || 'Could not read identity from daemon.');
+    console.log('[gf:wizard] read identity from daemon');
+    try {
+      const res = await window.gf.api('/api/id');
+      setBusy(false);
+      if (res.ok && res.data?.peer_id) {
+        console.log('[gf:wizard] identity ok', { peer_id: res.data.peer_id });
+        setPeerId(res.data.peer_id);
+        setStep('backup');
+      } else if (res.ok && typeof res.data === 'string') {
+        console.log('[gf:wizard] identity ok (string form)');
+        setPeerId(res.data);
+        setStep('backup');
+      } else {
+        console.error('[gf:wizard] identity read failed', { status: res.status, error: res.error, data: res.data });
+        setError(String(res.error || (res.data as any)?.error || 'Could not read identity from daemon.'));
+      }
+    } catch (e) {
+      setBusy(false);
+      console.error('[gf:wizard] identity read threw', e);
+      setError(`Could not read identity from daemon: ${(e as Error).message}`);
     }
   };
 
   useEffect(() => {
-    // prefetch peer id if daemon already has one
     window.gf.api('/api/id').then((res: any) => {
       if (res?.ok) setPeerId(res.data?.peer_id || res.data || '');
-    });
+      else console.error('[gf:wizard] identity prefetch failed', { status: res?.status, error: res?.error });
+    }).catch((e) => console.error('[gf:wizard] identity prefetch threw', e));
   }, []);
 
   const doBackup = async () => {
     setBusy(true);
     setError(null);
-    const pick = await window.gf.pickSavePath('gitforest-identity-backup.enc');
-    if (pick.canceled || !pick.filePath) { setBusy(false); return; }
-    // Daemon writes the key backup through /api/identity/export.
-    // The wizard records done-ness so the flag can drive the "backup done" UI state.
-    const res = await window.gf.api('/api/identity/export', { method: 'POST', body: { path: pick.filePath } });
-    setBusy(false);
-    if (res.ok) {
-      setBackupDone(true);
-    } else {
-      setError(res.error || 'Identity export failed.');
+    try {
+      const pick = await window.gf.pickSavePath('gitforest-identity-backup.enc');
+      if (pick.canceled || !pick.filePath) { setBusy(false); return; }
+      console.log('[gf:wizard] identity export started', { path: pick.filePath });
+      const res = await window.gf.api('/api/identity/export', { method: 'POST', body: { path: pick.filePath } });
+      setBusy(false);
+      if (res.ok) {
+        console.log('[gf:wizard] identity export ok');
+        setBackupDone(true);
+      } else {
+        console.error('[gf:wizard] identity export failed', { status: res.status, error: res.error, data: res.data });
+        setError(String(res.error || (res.data as any)?.error || 'Identity export failed.'));
+      }
+    } catch (e) {
+      setBusy(false);
+      console.error('[gf:wizard] identity export threw', e);
+      setError(`Identity export failed: ${(e as Error).message}`);
     }
   };
 
@@ -61,15 +78,26 @@ export default function FirstRunWizard({ onComplete }: { onComplete: () => void 
     if (!cloneUrl) return;
     setCloneStatus('cloning');
     setError(null);
-    // clone goes through the daemon (needs git + remote helper on the host)
-    const pick = await window.gf.pickDirectory();
-    if (pick.canceled || !pick.filePaths?.[0]) { setCloneStatus('idle'); return; }
-    const res = await window.gf.api('/api/repos/clone', {
-      method: 'POST',
-      body: { url: cloneUrl, dest: pick.filePaths[0] },
-    });
-    setCloneStatus(res.ok ? 'ok' : 'fail');
-    if (!res.ok) setError(res.error || res.data?.error || 'Clone failed');
+    try {
+      const pick = await window.gf.pickDirectory();
+      if (pick.canceled || !pick.filePaths?.[0]) { setCloneStatus('idle'); return; }
+      console.log('[gf:wizard] demo clone started', { url: cloneUrl, dest: pick.filePaths[0] });
+      const res = await window.gf.api('/api/repos/clone', {
+        method: 'POST',
+        body: { url: cloneUrl, dest: pick.filePaths[0] },
+      });
+      setCloneStatus(res.ok ? 'ok' : 'fail');
+      if (res.ok) {
+        console.log('[gf:wizard] demo clone ok', res.data);
+      } else {
+        console.error('[gf:wizard] demo clone failed', { status: res.status, error: res.error, data: res.data });
+        setError(String(res.error || (res.data as any)?.error || 'Clone failed'));
+      }
+    } catch (e) {
+      setCloneStatus('fail');
+      console.error('[gf:wizard] demo clone threw', e);
+      setError(`Clone failed: ${(e as Error).message}`);
+    }
   };
 
   const steps: { id: Step; label: string }[] = [

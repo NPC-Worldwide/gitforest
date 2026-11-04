@@ -12,7 +12,13 @@ const ITEMS: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
 ];
 
-export default function Sidebar({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => void }) {
+export default function Sidebar({ page, onNavigate, appVersion, daemonVersion }: {
+  page: Page;
+  onNavigate: (p: Page) => void;
+  appVersion: string;
+  daemonVersion: string | null;
+}) {
+  const mismatch = !!appVersion && daemonVersion !== appVersion;
   return (
     <div className="w-44 flex-shrink-0 theme-bg-secondary border-r theme-border flex flex-col">
       <div className="flex items-center gap-2 px-4 py-3 border-b theme-border">
@@ -35,6 +41,12 @@ export default function Sidebar({ page, onNavigate }: { page: Page; onNavigate: 
           </button>
         ))}
       </nav>
+      <div className="px-4 py-2.5 border-t theme-border">
+        <p className="text-[10px] theme-text-muted">app v{appVersion || '?'}</p>
+        <p className={`text-[10px] ${mismatch ? 'text-amber-500' : 'theme-text-muted'}`}>
+          daemon {daemonVersion ? `v${daemonVersion}` : 'unknown'}
+        </p>
+      </div>
     </div>
   );
 }

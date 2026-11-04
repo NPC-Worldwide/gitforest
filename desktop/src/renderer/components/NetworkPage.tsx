@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Globe, RefreshCw } from 'lucide-react';
 
 function stripMeta(s: string): string {
@@ -69,13 +69,20 @@ export default function NetworkPage() {
   const [peers, setPeers] = useState<any[]>([]);
   const [connected, setConnected] = useState<number | null>(null);
   const [transfers, setTransfers] = useState<any[]>([]);
+  const lastPeerSig = useRef('');
 
   const load = useCallback(async () => {
-    const [s, p, t] = await Promise.all([
-      window.gf.api('/api/status'),
-      window.gf.api('/api/peers'),
-      window.gf.api('/api/transfers'),
-    ]);
+    let s: any; let p: any; let t: any;
+    try {
+      [s, p, t] = await Promise.all([
+        window.gf.api('/api/status'),
+        window.gf.api('/api/peers'),
+        window.gf.api('/api/transfers'),
+      ]);
+    } catch (e) {
+      console.error('[gf:net] load threw', e);
+      return;
+    }
     if (s.ok) setStatus(s.data);
     else console.error('[gf:net] /api/status failed', { status: s.status, error: s.error });
     if (p.ok) {
@@ -87,6 +94,17 @@ export default function NetworkPage() {
           bootstraps: Array.isArray(p.data?.bootstrap_peers) ? p.data.bootstrap_peers.length : '?',
           discovered: Array.isArray(p.data?.discovered_peers) ? p.data.discovered_peers.length : '?',
         });
+      } else {
+        const sig = `${list.length}/${p.data?.connected ?? '?'}`;
+        if (sig !== lastPeerSig.current) {
+          lastPeerSig.current = sig;
+          console.log('[gf:net] peers ok', {
+            entries: list.length,
+            connected: p.data?.connected ?? '?',
+            bootstraps: Array.isArray(p.data?.bootstrap_peers) ? p.data.bootstrap_peers.length : '?',
+            discovered: Array.isArray(p.data?.discovered_peers) ? p.data.discovered_peers.length : '?',
+          });
+        }
       }
     } else {
       console.error('[gf:net] /api/peers failed', { status: p.status, error: p.error });
