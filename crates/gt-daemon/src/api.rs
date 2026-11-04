@@ -1363,6 +1363,8 @@ struct CloneRepoRequest {
     url: String,
     #[serde(default)]
     dest: String,
+    #[serde(default)]
+    description: Option<String>,
 }
 
 fn clone_target_name(url: &str) -> Option<String> {
@@ -1401,6 +1403,7 @@ async fn clone_repo(
     headers: axum::http::HeaderMap,
     Json(req): Json<CloneRepoRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let state_arc = state.clone();
     let state = state.read().await;
     let err = |status: StatusCode, msg: String| (status, Json(serde_json::json!({"error": msg})));
     if let Err(s) = check_local_auth(&headers, &state.api_token) {
@@ -1432,10 +1435,17 @@ async fn clone_repo(
             format!("{} already exists", target.display()),
         ));
     }
+    let mut cmd = tokio::process::Command::new("git");
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let path = std::env::var("PATH").unwrap_or_default();
+            let sep = if cfg!(windows) { ';' } else { ':' };
+            cmd.env("PATH", format!("{}{sep}{path}", dir.display()));
+        }
+    }
     let output = tokio::time::timeout(
         Duration::from_secs(600),
-        tokio::process::Command::new("git")
-            .arg("clone")
+        cmd.arg("clone")
             .arg("--")
             .arg(req.url.trim())
             .arg(&target)
@@ -1462,7 +1472,25 @@ async fn clone_repo(
             format!("git clone failed: {tail}"),
         ));
     }
+    drop(state);
+    {
+        let mut state = state_arc.write().await;
+        let repo_config = RepoConfig {
+            name: name.clone(),
+            path: target.clone(),
+            owner: state.identity.peer_id(),
+            description: req.description.clone(),
+            seeding: true,
+        };
+        let acl = RepoAcl::new(&state.identity, &name);
+        if !state.config.repos.iter().any(|r| r.name == name) {
+            state.config.repos.push(repo_config);
+        }
+        state.acls.insert(name.clone(), acl);
+        let _ = state.config.save(&state.config_path);
+    }
     Ok(Json(serde_json::json!({
+        "name": name,
         "path": target.to_string_lossy(),
         "url": req.url.trim(),
     })))
@@ -2025,6 +2053,7 @@ async fn add_repo(
     let acl = RepoAcl::new(&state.identity, &repo_name);
     state.config.repos.push(repo_config);
     state.acls.insert(repo_name, acl);
+    let _ = state.config.save(&state.config_path);
 
     Ok(Json(json))
 }
@@ -2042,6 +2071,7 @@ async fn remove_repo(
     state.config.repos.retain(|r| r.name != name);
     state.acls.remove(&name);
     if state.config.repos.len() < before {
+        let _ = state.config.save(&state.config_path);
         StatusCode::OK
     } else {
         StatusCode::NOT_FOUND
@@ -7980,6 +8010,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn add_and_remove_repo_persist_to_config() {
+        let (state, tmp, _rx) = test_state("repo-persist");
+        let headers = local_auth_headers(&state).await;
+        let dir = tmp.join("myrepo");
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        let Json(added) = add_repo(
+            State(state.clone()),
+            headers.clone(),
+            Json(AddRepoRequest {
+                path: dir.to_str().unwrap().to_string(),
+                name: Some("myrepo".to_string()),
+                description: None,
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(added["name"], serde_json::json!("myrepo"));
+        let saved = std::fs::read_to_string(tmp.join("config.toml")).unwrap();
+        assert!(saved.contains("name = \"myrepo\""), "{saved}");
+        assert_eq!(
+            remove_repo(State(state.clone()), headers, AxPath("myrepo".to_string())).await,
+            StatusCode::OK
+        );
+        let saved = std::fs::read_to_string(tmp.join("config.toml")).unwrap();
+        assert!(!saved.contains("myrepo"), "{saved}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[tokio::test]
     async fn clone_repo_clones_local_fixture_and_rejects_bad_input() {
         let (state, tmp, _cmd_rx) = test_state("clone-repo");
         let src = tmp.join("src");
@@ -8011,18 +8070,28 @@ mod tests {
             Json(CloneRepoRequest {
                 url: url.clone(),
                 dest: parent.to_str().unwrap().to_string(),
+                description: None,
             }),
         )
         .await
         .unwrap();
         assert!(parent.join("src").join("hello.txt").exists());
         assert_eq!(ok["url"], serde_json::json!(url));
+        assert_eq!(ok["name"], serde_json::json!("src"));
+        {
+            let s = state.read().await;
+            assert!(s.config.repos.iter().any(|r| r.name == "src"));
+            assert!(s.acls.contains_key("src"));
+        }
+        let saved = std::fs::read_to_string(tmp.join("config.toml")).unwrap();
+        assert!(saved.contains("name = \"src\""), "{saved}");
         let again = clone_repo(
             State(state.clone()),
             headers.clone(),
             Json(CloneRepoRequest {
                 url,
                 dest: parent.to_str().unwrap().to_string(),
+                description: None,
             }),
         )
         .await;
@@ -8033,6 +8102,7 @@ mod tests {
             Json(CloneRepoRequest {
                 url: "ftp://example.com/r".into(),
                 dest: parent.to_str().unwrap().to_string(),
+                description: None,
             }),
         )
         .await;
@@ -8046,6 +8116,7 @@ mod tests {
             Json(CloneRepoRequest {
                 url: "file:///tmp/does-not-exist-src".into(),
                 dest: tmp.join("nope").to_str().unwrap().to_string(),
+                description: None,
             }),
         )
         .await;

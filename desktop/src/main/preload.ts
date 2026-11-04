@@ -14,7 +14,7 @@ export interface IGitforestAPI {
   configDir: () => Promise<string>;
   dataDir: () => Promise<string>;
   readLog: (tail?: number) => Promise<{ ok: boolean; data?: string; error?: string }>;
-  pickDirectory: () => Promise<any>;
+  pickDirectory: (message?: string) => Promise<any>;
   pickSavePath: (defaultName: string) => Promise<any>;
   pickFile: () => Promise<any>;
   saveFile: (filePath: string, content: string) => Promise<{ ok: boolean; error?: string }>;
@@ -44,7 +44,7 @@ contextBridge.exposeInMainWorld('gf', {
   configDir: () => ipcRenderer.invoke('gf:config-dir'),
   dataDir: () => ipcRenderer.invoke('gf:data-dir'),
   readLog: (tail?: number) => ipcRenderer.invoke('gf:read-log', tail),
-  pickDirectory: () => ipcRenderer.invoke('gf:pick-directory'),
+  pickDirectory: (message?: string) => ipcRenderer.invoke('gf:pick-directory', message),
   pickSavePath: (name: string) => ipcRenderer.invoke('gf:pick-save-path', name),
   pickFile: () => ipcRenderer.invoke('gf:pick-file'),
   saveFile: (p: string, c: string) => ipcRenderer.invoke('gf:save-file', p, c),

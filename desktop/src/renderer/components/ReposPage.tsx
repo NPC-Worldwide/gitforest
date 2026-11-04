@@ -23,11 +23,40 @@ export default function ReposPage() {
   const [netMeta, setNetMeta] = useState<any>(null);
   const [netLoading, setNetLoading] = useState(false);
   const [selectedNet, setSelectedNet] = useState<any | null>(null);
+  const [cloningNet, setCloningNet] = useState(false);
+  const [cloneNetErr, setCloneNetErr] = useState<string | null>(null);
+
+  const cloneFromNetwork = async (repo: any) => {
+    const pick = await window.gf.pickDirectory(`Choose where to clone ${repo.name}`);
+    if (pick.canceled || !pick.filePaths?.[0]) return;
+    setCloningNet(true);
+    setCloneNetErr(null);
+    const res = await window.gf.api('/api/repos/clone', {
+      method: 'POST',
+      body: { url: repo.clone_url, dest: pick.filePaths[0], description: repo.description || undefined },
+    });
+    setCloningNet(false);
+    if (!res.ok) {
+      setCloneNetErr(String(res.error || res.data?.error || 'Clone failed'));
+      return;
+    }
+    const name = res.data?.name || repo.name;
+    setSelectedNet(null);
+    setTab('hosted');
+    const list = await load();
+    const added = list.find((r) => r.name === name);
+    if (added) openRepo(added);
+  };
 
   const load = useCallback(async () => {
     const [r, id] = await Promise.all([window.gf.api('/api/repos'), window.gf.api('/api/id')]);
-    if (r.ok) setRepos(Array.isArray(r.data) ? r.data : r.data?.repos || []);
+    let list: Repo[] = [];
+    if (r.ok) {
+      list = Array.isArray(r.data) ? r.data : r.data?.repos || [];
+      setRepos(list);
+    }
     if (id.ok) setPeerId(id.data?.peer_id || id.data || '');
+    return list;
   }, []);
 
   const loadNetwork = useCallback(async () => {
@@ -174,7 +203,7 @@ export default function ReposPage() {
         {tab === 'network' && netLoading && netRepos.length === 0 && <p className="text-xs theme-text-muted p-4">Scanning bootstrap nodes…</p>}
         {tab === 'network' && !netLoading && netRepos.length === 0 && <p className="text-xs theme-text-muted p-4">No network repos found. Are the bootstraps reachable?</p>}
         {tab === 'network' && netRepos.map((r: any) => (
-          <button key={`${r.owner}/${r.name}`} onClick={() => { setSelected(null); setSelectedNet(r); }}
+          <button key={`${r.owner}/${r.name}`} onClick={() => { setSelected(null); setSelectedNet(r); setCloneNetErr(null); }}
             className={`w-full text-left px-4 py-3 border-b theme-border ${selectedNet?.owner === r.owner && selectedNet?.name === r.name ? 'theme-bg-tertiary' : 'hover:theme-bg-tertiary'}`}>
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
@@ -205,10 +234,13 @@ export default function ReposPage() {
                   </button>
                 </div>
               </div>
-              <button onClick={() => { setCloneInputUrl(selectedNet.clone_url || ''); setCloneMsg(null); setShowClone(true); }}
-                className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded px-3 py-1.5">
-                <Download size={12} /> Clone
-              </button>
+              <div className="flex flex-col items-end gap-2">
+                <button onClick={() => cloneFromNetwork(selectedNet)} disabled={cloningNet}
+                  className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded px-3 py-1.5">
+                  <Download size={12} /> {cloningNet ? 'Cloning…' : 'Clone'}
+                </button>
+                {cloneNetErr && <p className="text-xs text-red-500 max-w-xs text-right">{cloneNetErr}</p>}
+              </div>
             </div>
 
             <div className="grid grid-cols-3 gap-4 mb-6">

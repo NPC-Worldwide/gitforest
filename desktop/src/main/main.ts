@@ -298,10 +298,10 @@ ipcMain.handle('gf:read-log', async (_e, tailLines = 200) => {
   }
 });
 
-ipcMain.handle('gf:pick-directory', async () => {
+ipcMain.handle('gf:pick-directory', async (_e, message?: string) => {
   const win = BrowserWindow.getFocusedWindow();
   if (!win) return { canceled: true };
-  return dialog.showOpenDialog(win, { properties: ['openDirectory'] });
+  return dialog.showOpenDialog(win, { properties: ['openDirectory'], ...(message ? { title: message, message } : {}) });
 });
 
 ipcMain.handle('gf:pick-save-path', async (_e, defaultName: string) => {
