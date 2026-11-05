@@ -56,14 +56,28 @@ jobs:
             echo "cloud=false" >> "$GITHUB_OUTPUT"
           fi
 
+  # Linux artifacts are built on Ubuntu 22.04 (glibc 2.35) on purpose:
+  # ubuntu-latest tracks the newest Ubuntu and produces binaries requiring
+  # GLIBC_2.39+, which refuse to start on Ubuntu 22.04 / Debian 12 and older.
+  # Do not move Linux builds back to ubuntu-latest.
   build-linux:
     needs: [gates]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace --release
+      - name: Verify glibc baseline (<= 2.35)
+        run: |
+          for bin in target/release/gitforest target/release/git-remote-gitforest target/release/gtfo target/release/gitforest-mcp; do
+            [ -f "$bin" ] || continue
+            v=$(readelf -V "$bin" | grep -oE 'GLIBC_2\.[0-9]+' | sed 's/GLIBC_//' | sort -Vu | tail -1)
+            echo "$bin requires up to GLIBC_$v"
+            if [ "$(printf '%s\n2.35\n' "$v" | sort -V | tail -1)" != "2.35" ]; then
+              echo "::error::$bin requires GLIBC_$v, above the 2.35 baseline"; exit 1
+            fi
+          done
       - run: sh scripts/dist.sh "${GITHUB_REF_NAME#v}" linux-x64
       - uses: actions/upload-artifact@v4
         with:
@@ -159,12 +173,22 @@ jobs:
 
   build-deb:
     needs: [gates]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace --release
+      - name: Verify glibc baseline (<= 2.35)
+        run: |
+          for bin in target/release/gitforest target/release/git-remote-gitforest target/release/gtfo target/release/gitforest-mcp; do
+            [ -f "$bin" ] || continue
+            v=$(readelf -V "$bin" | grep -oE 'GLIBC_2\.[0-9]+' | sed 's/GLIBC_//' | sort -Vu | tail -1)
+            echo "$bin requires up to GLIBC_$v"
+            if [ "$(printf '%s\n2.35\n' "$v" | sort -V | tail -1)" != "2.35" ]; then
+              echo "::error::$bin requires GLIBC_$v, above the 2.35 baseline"; exit 1
+            fi
+          done
       - run: |
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p debian/usr/bin debian/DEBIAN
@@ -194,7 +218,7 @@ jobs:
 
   build-desktop-linux:
     needs: [gates]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -205,6 +229,16 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - run: cargo build -p gt-daemon -p gt-remote --release
+      - name: Verify glibc baseline (<= 2.35)
+        run: |
+          for bin in target/release/gitforest target/release/git-remote-gitforest target/release/gtfo; do
+            [ -f "$bin" ] || continue
+            v=$(readelf -V "$bin" | grep -oE 'GLIBC_2\.[0-9]+' | sed 's/GLIBC_//' | sort -Vu | tail -1)
+            echo "$bin requires up to GLIBC_$v"
+            if [ "$(printf '%s\n2.35\n' "$v" | sort -V | tail -1)" != "2.35" ]; then
+              echo "::error::$bin requires GLIBC_$v, above the 2.35 baseline"; exit 1
+            fi
+          done
       - run: npm ci
         working-directory: desktop
       - run: npm run build
